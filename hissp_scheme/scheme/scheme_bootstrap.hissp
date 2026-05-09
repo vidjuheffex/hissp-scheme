@@ -1,0 +1,235 @@
+hissp..prelude#:
+
+;; This file is the minimal Scheme dialect layer.
+;;
+;; Runtime helpers for import planning, library exports, and include resolution
+;; live in `scheme_bootstrap_runtime.py` so normal Python tooling can understand
+;; them. This file keeps only the Hissp/Lissp macro layer that shapes the source
+;; language: `define`, `lambda`, `let`, `if`, `import`, etc.
+;;
+;; This module is deliberately below every other Scheme module. Library
+;; implementations can depend on this bootstrap prelude without depending on the
+;; user-facing `scheme` base library.
+;;
+;; The top-level `hissp..prelude#:` is still required because this file itself
+;; is written in Lissp and uses Hissp's macro-building tools to define the
+;; Scheme surface.
+
+;; ---------------------------------------------------------------------------
+;; Macro layer: Scheme source forms
+;; ---------------------------------------------------------------------------
+;; These macros generally expand into Hissp's own macro primitives instead of
+;; reinventing code generation. That keeps the dialect small: we use Hissp for
+;; Python compilation, but expose Scheme names and shapes at the source level.
+
+(defmacro define (head .#"*body")
+  ;; Scheme `define` has two common forms:
+  ;;
+  ;;   (define name value)
+  ;;   (define (function arg ...) body ...)
+  ;;
+  ;; Hissp has separate underlying forms for variable definitions and function
+  ;; definitions, so this macro dispatches based on whether the head is a tuple.
+  (if-else (isinstance head tuple)
+    (progn
+      (unless head
+        (throw (SyntaxError "function-style define requires a name")))
+      (tuple
+        (itertools..chain
+          (@ 'hissp.macros.._macro_.defun
+             (op#getitem head 0)
+             (hissp_scheme.runtime.scheme_bootstrap_runtime..scheme_formals
+               (tuple (op#getitem head (slice 1 None)))))
+          (hissp_scheme.runtime.scheme_bootstrap_runtime..scheme_body
+            (tuple (op#getitem head (slice 1 None)))
+            body))))
+    (progn
+      (unless (op#eq (len body) 1)
+        (throw (SyntaxError "value-style define requires exactly one value")))
+      (tuple (@ 'hissp.macros.._macro_.define head (op#getitem body 0))))))
+
+(defmacro lambda (formals .#"*body")
+  ;; Scheme-style anonymous function:
+  ;;
+  ;;   (lambda (x) body ...)
+  ;;
+  ;; Expands to Hissp's `fun` macro with the Python lambda target.
+  (tuple
+    (itertools..chain
+      (@ 'hissp.macros.._macro_.fun
+         'lambda
+         (hissp_scheme.runtime.scheme_bootstrap_runtime..scheme_formals formals))
+      (hissp_scheme.runtime.scheme_bootstrap_runtime..scheme_body formals body))))
+
+(defmacro begin (.#"*body")
+  ;; Scheme sequencing form. Hissp calls the equivalent `progn`.
+  (tuple
+    (itertools..chain
+      (@ 'hissp.macros.._macro_.progn)
+      body)))
+
+(defmacro if (test consequent alternate)
+  ;; Scheme `if` requires an alternate here. This maps directly to Hissp's
+  ;; expression-oriented `if-else` macro.
+  (tuple (@ 'hissp.macros.._macro_.ifQzH_else test consequent alternate)))
+
+(defun let-pair (binding)
+  ;; Validate one binding in Scheme-shaped `let`:
+  ;;
+  ;;   ((name value) ...)
+  ;;
+  ;; Hissp's underlying `let` wants a flat sequence, so we validate before
+  ;; flattening to produce better errors.
+  (unless (ands (isinstance binding tuple)
+                (op#eq (len binding) 2))
+    (throw (SyntaxError "let bindings must be (name value) pairs")))
+  binding)
+
+(defun flatten-let-bindings (bindings)
+  ;; Convert `((x 1) (y 2))` into `(x 1 y 2)`.
+  (tuple (itertools..chain.from_iterable (map let-pair bindings))))
+
+(defmacro let (bindings .#"*body")
+  ;; Scheme-shaped local binding form.
+  (tuple
+    (itertools..chain
+      (@ 'hissp.macros.._macro_.let
+         (flatten-let-bindings bindings))
+      body)))
+
+(defmacro set! (target value)
+  ;; Scheme variable rebinding. Python attribute mutation lives in
+  ;; `(scheme python)` as `attribute-set!`.
+  (tuple (@ 'set@ target value)))
+
+(defun import-form (spec)
+  (tuple
+    (@ 'hissp_scheme.runtime.scheme_bootstrap_runtime..install_import
+       (tuple (@ 'builtins..globals))
+       (tuple (@ 'quote spec)))))
+
+(defmacro import (.#"*specs")
+  ;; R7RS-shaped import declaration backed by Python importlib.
+  ;;
+  ;; Supported:
+  ;;   (import (srfi 1) (srfi 64))
+  ;;   (import json)
+  ;;   (import (only json dumps))
+  ;;   (import (except json dump))
+  ;;   (import (rename json (dumps json-dumps)))
+  ;;   (import (prefix json json-))
+  (unless specs
+    (throw (SyntaxError "import requires at least one import set")))
+  (tuple
+    (itertools..chain
+      (@ 'hissp.macros.._macro_.progn)
+      (map import-form specs))))
+
+(defmacro include (.#"*paths")
+  ;; R7RS source include for programs and top-level library implementation
+  ;; files. This is intentionally source composition, not module import:
+  ;; included forms are read relative to the current source file and compiled as
+  ;; if they appeared at the include site.
+  (unless paths
+    (throw (SyntaxError "include requires at least one filename")))
+  (tuple
+    (itertools..chain
+      (@ 'hissp.macros.._macro_.progn)
+      (hissp_scheme.runtime.scheme_bootstrap_runtime..schemeQzH_includeQzH_forms paths))))
+
+(defmacro define-library (name .#"*clauses")
+  ;; Practical R7RS-shaped library form.
+  ;;
+  ;; Supported clauses:
+  ;;
+  ;;   (export id ... (rename internal external) ...)
+  ;;   (import import-set ...)
+  ;;   (begin definition-or-expression ...)
+  ;;
+  ;; The form expands to ordinary top-level Scheme code plus a final
+  ;; metadata registration call. This keeps the module importable by Python/Hissp
+  ;; while letting the source file declare its API in Scheme syntax.
+  (hissp_scheme.runtime.scheme_bootstrap_runtime..library_form (hissp.compiler..ENV.get) name clauses))
+
+(defmacro prelude (env)
+  ;; Install the base Scheme surface into the caller's environment.
+  ;;
+  ;; This macro is invoked by the tag function at the bottom of the file when a
+  ;; source file starts with:
+  ;;
+  ;;   scheme_bootstrap..prelude#:
+  ;;
+  ;; It first delegates to Hissp's own prelude so the compiler has the standard
+  ;; macro machinery, then shadows/adds the Scheme names.
+  (tuple
+    (@ 'hissp.macros.._macro_.progn
+       ;; Keep the standard Hissp base available.
+       (tuple (@ 'hissp.macros.._macro_.prelude env))
+       ;; Scheme operator spellings. The symbols here are already Hissp-munged:
+       ;; `+` -> QzPLUS_, `<=` -> QzLT_QzEQ_, etc.
+       (tuple (@ 'hissp.macros.._macro_.define 'QzPLUS_ 'operator..add))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzH_ 'operator..sub))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzSTAR_ 'operator..mul))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzSOL_ 'operator..truediv))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzEQ_ 'operator..eq))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzLT_ 'operator..lt))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzGT_ 'operator..gt))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzLT_QzEQ_ 'operator..le))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzGT_QzEQ_ 'operator..ge))
+       ;; Scheme booleans.
+       (tuple (@ 'hissp.macros.._macro_.define 'QzHASH_t True))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzHASH_f False))
+       ;; Macro aliases. Some names (`lambda`, `if`, `let`, `import`) collide
+       ;; with Python/Hissp names or require string lookup, so use `getattr`
+       ;; where direct dotted access is awkward.
+       (tuple
+         (@ 'builtins..setattr
+            '_macro_
+            (tuple (@ 'quote 'define))
+            'scheme_bootstrap.._macro_.define))
+       (tuple
+         (@ 'builtins..setattr
+            '_macro_
+            (tuple (@ 'quote 'lambda))
+            (tuple (@ 'builtins..getattr 'scheme_bootstrap.._macro_ (tuple (@ 'quote "lambda"))))))
+       (tuple
+         (@ 'builtins..setattr
+            '_macro_
+            (tuple (@ 'quote 'begin))
+            'scheme_bootstrap.._macro_.begin))
+       (tuple
+         (@ 'builtins..setattr
+            '_macro_
+            (tuple (@ 'quote 'if))
+            (tuple (@ 'builtins..getattr 'scheme_bootstrap.._macro_ (tuple (@ 'quote "if"))))))
+       (tuple
+         (@ 'builtins..setattr
+            '_macro_
+            (tuple (@ 'quote 'let))
+            (tuple (@ 'builtins..getattr 'scheme_bootstrap.._macro_ (tuple (@ 'quote "let"))))))
+       (tuple
+         (@ 'builtins..setattr
+            '_macro_
+            (tuple (@ 'quote 'set!))
+            'scheme_bootstrap.._macro_.setQzBANG_))
+       (tuple
+         (@ 'builtins..setattr
+            '_macro_
+            (tuple (@ 'quote 'import))
+            (tuple (@ 'builtins..getattr 'scheme_bootstrap.._macro_ (tuple (@ 'quote "import"))))))
+       (tuple
+         (@ 'builtins..setattr
+            '_macro_
+            (tuple (@ 'quote 'include))
+            'scheme_bootstrap.._macro_.include))
+       (tuple
+         (@ 'builtins..setattr
+            '_macro_
+            (tuple (@ 'quote 'define-library))
+            'scheme_bootstrap.._macro_.defineQzH_library))
+       )))
+
+(defun prelude (env)
+  ;; Reader-tag entrypoint. Hissp reader tags call functions, not macros, so the
+  ;; function returns the macro form that installs the real prelude.
+  (tuple (@ 'scheme_bootstrap.._macro_.prelude env)))

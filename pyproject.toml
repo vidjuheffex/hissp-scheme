@@ -1,0 +1,27 @@
+[project]
+name = "hissp-scheme"
+version = "0.1.0"
+description = "Scheme reader, runtime, and bundled R7RS/SRFI libraries for Hissp."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "hissp>=0.5.0",
+]
+
+[project.scripts]
+scheme-test = "hissp_scheme.test:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["hissp_scheme*"]
+
+[tool.setuptools.package-data]
+hissp_scheme = ["scheme/*", "srfi/*"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+]

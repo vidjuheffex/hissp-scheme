@@ -1,0 +1,21 @@
+(import (scheme base)
+        (srfi 64))
+(import (srfi 1))
+
+(test-group "srfi-1"
+  (define my-list (list 1 2 3))
+
+  (test-equal "xcons" (cons 1 2) (xcons 2 1))
+  (test-equal "cons*" (cons 1 (cons 2 3)) (cons* 1 2 3))
+  (test-equal "make-list" '(x x x) (make-list 3 'x))
+  (test-equal "iota" '(2 5 8) (iota 3 2 3))
+  (test-assert "proper-list?" (proper-list? my-list))
+  (test-assert "dotted-list?" (dotted-list? (cons 1 2)))
+  (test-equal "take" '(1 2) (take my-list 2))
+  (test-equal "drop" '(3) (drop my-list 2))
+  (test-equal "map" '(10 20 30) (map (lambda (x) (* x 10)) my-list))
+  (test-equal "filter" '(2 3) (filter (lambda (x) (> x 1)) my-list))
+  (test-equal "fold" 6 (fold (lambda (x acc) (+ x acc)) 0 my-list))
+  (test-equal "member" '(2 3) (member 2 my-list))
+  (test-equal "assoc" (cons "b" 2) (assoc "b" (list (cons "a" 1) (cons "b" 2))))
+  (test-assert "list=" (list= = my-list (list 1 2 3))))
