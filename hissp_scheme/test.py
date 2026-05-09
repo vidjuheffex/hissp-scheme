@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import importlib
-import sys
 from pathlib import Path
 from typing import Any
 
 import hissp.repl
 
-from hissp_scheme import core_library_files
-from hissp_scheme.reader import SchemeLissp, transpile_scheme_file
+from hissp_scheme.build import DEFAULT_BUILD_DIR, build_core_libraries
+from hissp_scheme.reader import SchemeLissp
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEST_DIR = PROJECT_ROOT / "tests"
-BUILD_DIR = PROJECT_ROOT / ".scheme-build"
+BUILD_DIR = DEFAULT_BUILD_DIR
 
 TEST_FILES = (
     TEST_DIR / "test_scheme_base.scm",
@@ -146,12 +145,7 @@ def _record_import_helper_error_checks() -> None:
 
 
 def main() -> int:
-    build_dir = str(BUILD_DIR)
-    if build_dir not in sys.path:
-        sys.path.insert(0, build_dir)
-
-    for module in core_library_files():
-        transpile_scheme_file(module, output_dir=BUILD_DIR)
+    build_core_libraries(BUILD_DIR)
 
     main_module = hissp.repl.force_main()
     env = main_module.__dict__

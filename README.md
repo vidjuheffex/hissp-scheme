@@ -20,6 +20,17 @@ There is no extra bundle namespace in Scheme source.
 uv run scheme-test
 ```
 
+## REPL
+
+```sh
+uv run scheme-repl
+```
+
+The REPL builds the bundled libraries into `.scheme-build`, imports
+`(scheme base)`, and evaluates Scheme forms interactively. Use `--no-base` to
+start with only the bootstrap language, or `--show-python` to echo compiled
+Python before each form is evaluated.
+
 ## Repository Layout
 
 ```text

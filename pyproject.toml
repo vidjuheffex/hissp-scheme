@@ -9,6 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
+scheme-repl = "hissp_scheme.repl:main"
 scheme-test = "hissp_scheme.test:main"
 
 [build-system]
