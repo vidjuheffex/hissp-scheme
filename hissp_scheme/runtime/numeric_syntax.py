@@ -10,9 +10,47 @@ _EXACT_TYPES = (int, Fraction)
 _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 
+class Rational(Fraction):
+    """Exact non-integer rational.
+
+    Arithmetic on a `Rational` returns an `int` when the result is whole, so
+    exact integers are always `int`. That lets compiled code use Python's own
+    operators (see `hissp_scheme.macro.primitives`) without normalizing
+    results afterward.
+    """
+
+    __slots__ = ()
+
+
+def _normalizing(method):
+    def operation(self, *args):
+        result = method(self, *args)
+        if isinstance(result, Fraction):
+            if result.denominator == 1:
+                return result.numerator
+            if result.__class__ is not Rational:
+                return Rational._from_coprime_ints(result.numerator, result.denominator)
+        return result
+
+    operation.__name__ = method.__name__
+    return operation
+
+
+for _name in (
+    "__add__", "__radd__", "__sub__", "__rsub__", "__mul__", "__rmul__",
+    "__truediv__", "__rtruediv__", "__mod__", "__rmod__", "__pow__", "__rpow__",
+    "__neg__", "__pos__", "__abs__",
+):
+    setattr(Rational, _name, _normalizing(getattr(Fraction, _name)))
+del _name
+
+
 def _normalize(value):
-    if value.__class__ is Fraction and value.denominator == 1:
-        return value.numerator
+    if isinstance(value, Fraction):
+        if value.denominator == 1:
+            return value.numerator
+        if value.__class__ is not Rational:
+            return Rational._from_coprime_ints(value.numerator, value.denominator)
     return value
 
 

@@ -279,11 +279,14 @@ Partial or intentionally explicit errors:
 - Local `set!` is detected from `set!` forms written in the variable's scope.
   A macro that expands into `set!` of a caller's local variable isn't detected,
   and assigns a module-level variable instead.
-- Scheme procedures are Python functions that run a small trampoline, and
-  `(scheme base)` arithmetic goes through Python functions (for variadic
-  arguments and exact rationals) rather than `operator`. Expect call-heavy
-  arithmetic code (such as naive `fib`) to run roughly 2x slower than plain
-  Python lambdas would.
+- Scheme procedures are Python functions that run a small trampoline, so
+  call-heavy code is slower than the equivalent plain Python: naive
+  `(fib 22)` takes about 3.5 ms, versus about 1.1 ms for a Python function.
+  `if` compiles to a Python conditional expression (see
+  `hissp_scheme/macro/conditional.py`), and two-argument calls of `+`, `-`,
+  `*`, `=`, `<`, `>`, `<=`, and `>=` compile to Python operators unless the
+  name is rebound (see `hissp_scheme/macro/primitives.py`); other arities
+  call the variadic procedures.
 - SRFI-18 `raise` keeps SRFI-18's behavior of returning the handler's value,
   but it shares the handler stack with `(scheme base)`, so either library's
   handlers see the other's raises.

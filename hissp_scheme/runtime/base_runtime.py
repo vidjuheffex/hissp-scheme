@@ -131,7 +131,7 @@ def _divide(first, second):
             raise ZeroDivisionError("/: division by exact zero")
         if first % second == 0:
             return first // second
-        return Fraction(first, second)
+        return _normalize(Fraction(first, second))
     if isinstance(first, _EXACT_TYPES) and isinstance(second, _EXACT_TYPES):
         if second == 0:
             raise ZeroDivisionError("/: division by exact zero")
@@ -398,7 +398,7 @@ def _exact_sqrt(value):
     denominator_root = _exact_sqrt(value.denominator)
     if numerator_root is None or denominator_root is None:
         return None
-    return Fraction(numerator_root, denominator_root)
+    return _normalize(Fraction(numerator_root, denominator_root))
 
 
 def sqrt(value):

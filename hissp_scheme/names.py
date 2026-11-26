@@ -21,6 +21,13 @@ UNRENAMED_KEYWORDS = frozenset(
 )
 
 
+# Munged names of the `(scheme base)` procedures that two-argument calls
+# compile to Python operators (see `hissp_scheme.macro.primitives`).
+INTEGRATED_PRIMITIVES = frozenset(
+    {"QzPLUS_", "QzH_", "QzSTAR_", "QzEQ_", "QzLT_", "QzGT_", "QzLT_QzEQ_", "QzGT_QzEQ_"}
+)
+
+
 def rename_keyword(symbol: str) -> str:
     """Rename an already-munged symbol if it's a Python keyword."""
 

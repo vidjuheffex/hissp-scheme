@@ -34,6 +34,16 @@
 (define (r7-values->list thunk)
   (call-with-values thunk list))
 
+(define (r7-shadowed-plus + a b)
+  (+ a b))
+
+(define (r7-let-shadowed-less)
+  (let ((< (lambda (a b) 'mine)))
+    (< 1 2)))
+
+(define (r7-inline-sum a b)
+  (+ a b))
+
 ;; ---------------------------------------------------------------------------
 ;; Tests
 ;; ---------------------------------------------------------------------------
@@ -197,6 +207,18 @@
   (test-equal "+inf.0" (number->string +inf.0))
   (test-equal 31 #x1F)
   (test-equal 3/2 #e1.5))
+
+(test-group "r7rs integrated primitives"
+  (test-equal '(1 2) (r7-shadowed-plus list 1 2))
+  (test-equal 'mine (r7-let-shadowed-less))
+  (test-equal 1 (r7-inline-sum 1/2 1/2))
+  (test-equal #t (exact-integer? (r7-inline-sum 1/2 1/2)))
+  (test-equal 1/2 (- 1 1/2))
+  (test-equal #t (exact-integer? (* 2/3 3/2)))
+  (test-equal 2.5 (r7-inline-sum 2 0.5))
+  (test-equal "ab" (r7-inline-sum "a" "b"))
+  (test-equal 6 (apply + '(1 2 3)))
+  (test-equal #t (< 1 (+ 1 1) 3)))
 
 (test-group "r7rs lists"
   (test-equal '(11 22 33) (map + '(1 2 3) '(10 20 30)))

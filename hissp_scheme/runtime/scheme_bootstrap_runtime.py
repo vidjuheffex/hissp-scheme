@@ -258,6 +258,9 @@ def install_library_exports(env, specs):
 
         if macro_namespace is not None and hasattr(macro_namespace, internal_name):
             macro_exports[external_source] = internal_name
+            # A name can be both: `+` is a procedure and an integrating macro.
+            if internal_name in env:
+                value_exports[external_source] = env[internal_name]
             continue
 
         if internal_name not in env:

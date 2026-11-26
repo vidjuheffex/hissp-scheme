@@ -9,6 +9,7 @@ import builtins
 import itertools
 
 from hissp_scheme import names
+from hissp_scheme.names import INTEGRATED_PRIMITIVES
 from hissp_scheme.macro.quote import QUOTE
 
 _QUOTE_HEADS = ("quote", QUOTE)
@@ -412,10 +413,14 @@ def box_assigned_locals(names, body):
 
     Only `set!` forms visible in the source are found; a macro that expands
     into `set!` of a caller's variable isn't detected.
+
+    Locals that shadow an integrated primitive such as `+` are boxed too, so
+    calls through them compile to `cell[0](...)` instead of reaching the
+    primitive's macro.
     """
 
     body = tuple(body)
-    found = set()
+    found = set(names) & INTEGRATED_PRIMITIVES
     for form in body:
         _collect_assigned_names(form, set(names), found)
     if not found:

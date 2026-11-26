@@ -302,6 +302,27 @@ scheme_bootstrap..prelude#:
 (define > hissp_scheme.runtime.base_runtime..num_gt)
 (define <= hissp_scheme.runtime.base_runtime..num_le)
 (define >= hissp_scheme.runtime.base_runtime..num_ge)
+
+;; Two-argument calls of the procedures above compile to Python operators; see
+;; `hissp_scheme/macro/primitives.py`. Each name is exported as both the
+;; procedure and the macro. The `_Qzprim_` helpers are what the macros call
+;; for operands that can't be inlined.
+(define _Qzprim_add operator..add)
+(define _Qzprim_sub operator..sub)
+(define _Qzprim_mul operator..mul)
+(define _Qzprim_eq operator..eq)
+(define _Qzprim_lt operator..lt)
+(define _Qzprim_gt operator..gt)
+(define _Qzprim_le operator..le)
+(define _Qzprim_ge operator..ge)
+(builtins..setattr _macro_ 'QzPLUS_ hissp_scheme.macro.primitives.._macro_.QzPLUS_)
+(builtins..setattr _macro_ 'QzH_ hissp_scheme.macro.primitives.._macro_.QzH_)
+(builtins..setattr _macro_ 'QzSTAR_ hissp_scheme.macro.primitives.._macro_.QzSTAR_)
+(builtins..setattr _macro_ 'QzEQ_ hissp_scheme.macro.primitives.._macro_.QzEQ_)
+(builtins..setattr _macro_ 'QzLT_ hissp_scheme.macro.primitives.._macro_.QzLT_)
+(builtins..setattr _macro_ 'QzGT_ hissp_scheme.macro.primitives.._macro_.QzGT_)
+(builtins..setattr _macro_ 'QzLT_QzEQ_ hissp_scheme.macro.primitives.._macro_.QzLT_QzEQ_)
+(builtins..setattr _macro_ 'QzGT_QzEQ_ hissp_scheme.macro.primitives.._macro_.QzGT_QzEQ_)
 (define number? hissp_scheme.runtime.base_runtime..number_q)
 (define complex? hissp_scheme.runtime.base_runtime..complex_q)
 (define real? hissp_scheme.runtime.base_runtime..real_q)
@@ -383,7 +404,15 @@ scheme_bootstrap..prelude#:
 
 (hissp_scheme.runtime.scheme_bootstrap_runtime..install-library-exports
   (builtins..globals)
-  '(+
+  '(_Qzprim_add
+    _Qzprim_sub
+    _Qzprim_mul
+    _Qzprim_eq
+    _Qzprim_lt
+    _Qzprim_gt
+    _Qzprim_le
+    _Qzprim_ge
+    +
     -
     *
     /
