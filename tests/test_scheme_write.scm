@@ -11,5 +11,5 @@
   (newline display-port)
 
   (test-equal "display/write/newline"
-              "hello 'world'\n"
+              "hello \"world\"\n"
               (.getvalue display-port)))

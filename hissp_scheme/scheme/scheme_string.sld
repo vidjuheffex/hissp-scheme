@@ -30,7 +30,8 @@
   (import (scheme base))
   (begin
     (define (string? value)
-      (isinstance value str))
+      ;; Symbols are a `str` subclass; see `hissp_scheme.runtime.symbols`.
+      (eq? (type value) str))
 
     (define (check-string value procedure)
       (unless (string? value)

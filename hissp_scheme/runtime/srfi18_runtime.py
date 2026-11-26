@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 import hissp
 
-from hissp_scheme.runtime import control_runtime
+from hissp_scheme.runtime import control_runtime, symbols
 
 _UNSPECIFIED = object()
 _thread_ids = itertools.count(1)
@@ -133,7 +133,7 @@ _thread_local.current = _primordial_thread
 
 
 def _symbol(name: str) -> str:
-    return hissp.munge(name)
+    return symbols.string_to_symbol(name)
 
 
 current_exception_handler = control_runtime.current_exception_handler

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import builtins
 import sys
 from code import InteractiveConsole
 from contextlib import suppress
@@ -13,6 +14,7 @@ from hissp.compiler import CompileError
 from hissp.reader import Lissp, SoftSyntaxError
 
 from hissp_scheme.build import DEFAULT_BUILD_DIR, build_core_libraries
+from hissp_scheme.runtime.printer import write_string
 from hissp_scheme.reader import (
     SCHEME_PRELUDE_TAG,
     SchemeLissp,
@@ -38,13 +40,16 @@ class SchemeFragmentLissp(SchemeLissp):
 
     def compile(self, code: str) -> str:
         previous = getattr(self, "scheme_quote_lists", False)
+        previous_symbols = getattr(self, "scheme_symbols", False)
         self.scheme_quote_lists = True
+        self.scheme_symbols = True
         if self.filename:
             _set_current_source_file(Path(self.filename))
         try:
             return Lissp.compile(self, code)
         finally:
             self.scheme_quote_lists = previous
+            self.scheme_symbols = previous_symbols
 
 
 class SchemeREPL(InteractiveConsole):
@@ -100,7 +105,12 @@ class SchemeREPL(InteractiveConsole):
         compiled_name = (
             f"<Compiled Scheme of {filename}:\n{self.lissp.compiler.linenos(python)}\n>"
         )
-        return super().runsource(python, compiled_name, symbol)
+        previous_hook = sys.displayhook
+        sys.displayhook = _scheme_displayhook
+        try:
+            return super().runsource(python, compiled_name, symbol)
+        finally:
+            sys.displayhook = previous_hook
 
     def raw_input(self, prompt: str = "") -> str:
         prompt = {sys.ps1: PS1, sys.ps2: PS2}.get(prompt, prompt)
@@ -111,6 +121,15 @@ class SchemeREPL(InteractiveConsole):
             import readline  # noqa: F401
 
         return super().interact(banner, exitmsg)
+
+
+def _scheme_displayhook(value: object) -> None:
+    """Echo REPL results in Scheme `write` notation."""
+
+    if value is None:
+        return
+    builtins._ = value
+    print(write_string(value))
 
 
 def _exec_repl_python(source: str, env: dict[str, object], filename: str) -> None:

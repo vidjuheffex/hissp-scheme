@@ -36,19 +36,9 @@ class Pair:
             raise ValueError(f'improper list tail: {value!r}')
 
     def __repr__(self):
-        parts = []
-        value = self
-        seen = set()
-        while pair_q(value):
-            if id(value) in seen:
-                parts.append('...')
-                return '(' + ' '.join(parts) + ')'
-            seen.add(id(value))
-            parts.append(repr(value.car))
-            value = value.cdr
-        if null_q(value):
-            return '(' + ' '.join(parts) + ')'
-        return '(' + ' '.join(parts) + ' . ' + repr(value) + ')'
+        from hissp_scheme.runtime.printer import write_string
+
+        return write_string(self)
 
     def __eq__(self, other):
         if not pair_q(other):

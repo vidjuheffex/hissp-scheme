@@ -128,8 +128,8 @@
           (set! test-current-kind "fail")
           (set! test-fail-count (+ test-fail-count 1))
           (print (.format "FAIL {}" test-current-name))
-          (print (.format "  expected: {!r}" expected))
-          (print (.format "  actual:   {!r}" actual))
+          (print (.format "  expected: {}" (hissp_scheme.runtime.printer..write_string expected)))
+          (print (.format "  actual:   {}" (hissp_scheme.runtime.printer..write_string actual)))
           #f)))
 
     (define (_identity value)
@@ -141,7 +141,7 @@
           (record-result name #f #t error))
         (lambda ()
           (let ((actual (thunk)))
-            (record-result name (bool actual) #t actual)))))
+            (record-result name (not (eq? actual #f)) #t actual)))))
 
     (define (test-compare-thunks name expected-thunk actual-thunk comparator source)
       (engarde BaseException
@@ -189,7 +189,10 @@
       (op#is_ left right))
 
     (define (same-value? left right)
-      (= left right))
+      (equal? left right))
+
+    (define (same-number-or-object? left right)
+      (eqv? left right))
 
     (define-syntax test-assert
       (syntax-rules ()
@@ -223,13 +226,13 @@
          (test-compare-thunks name
                               (lambda () (_identity expected))
                               (lambda () (_identity actual))
-                              same-value?
+                              same-number-or-object?
                               'actual))
         ((_ expected actual)
          (test-compare-thunks #f
                               (lambda () (_identity expected))
                               (lambda () (_identity actual))
-                              same-value?
+                              same-number-or-object?
                               'actual))))
 
     (define-syntax test-eq

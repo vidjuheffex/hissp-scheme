@@ -67,13 +67,13 @@
           (throw (SyntaxError "lambda/kw formals and keywords must be symbols"))))
       (unless (isinstance formals tuple)
         (throw (SyntaxError "lambda/kw formals must be a list")))
-      (when (and formals (isinstance (op#getitem formals -1) tuple))
+      (when (and (> (len formals) 0) (isinstance (op#getitem formals -1) tuple))
         (set! positional (op#getitem formals (slice 0 -1)))
         (set! keywords (op#getitem formals -1)))
-      (tuple (map check-formal (+ positional keywords)))
-      (if keywords
+      (tuple (builtins..map check-formal (+ positional keywords)))
+      (if (> (len keywords) 0)
         (+ (+ positional (tuple (@ "*")))
-           (tuple (map lambda-keyword-default keywords)))
+           (tuple (builtins..map lambda-keyword-default keywords)))
         positional))
 
     (define (call/kw-transformer function . args)

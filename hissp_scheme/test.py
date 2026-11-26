@@ -32,6 +32,7 @@ TEST_FILES = (
     TEST_DIR / "test_syntax_rules.scm",
     TEST_DIR / "test_reader.scm",
     TEST_DIR / "test_control.scm",
+    TEST_DIR / "test_r7rs.scm",
 )
 
 COMPILE_ERROR_CASES = (

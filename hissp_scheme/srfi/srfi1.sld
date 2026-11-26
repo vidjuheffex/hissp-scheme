@@ -2,7 +2,8 @@
 ;;
 ;; Core pair/list primitives live in `scheme`. This library adds SRFI-1
 ;; procedures in Scheme source and declares its public surface with
-;; `(define-library ...)`.
+;; `(define-library ...)`. `make-list`, `map`, `member`, and `assoc` are the
+;; `(scheme base)` procedures, which already have the SRFI-1 behavior.
 
 (define-library (srfi 1)
   (export xcons
@@ -38,14 +39,6 @@
       (if (null? rest)
         first
         (cons first (cons-star rest))))
-
-    (define (make-list count . maybe-fill)
-      (let ((fill (optional maybe-fill #f)))
-        (define (loop remaining)
-          (if (= remaining 0)
-            '()
-            (cons fill (loop (- remaining 1)))))
-        (loop count)))
 
     (define (iota count . options)
       (let ((start (if (pair? options)
@@ -86,12 +79,6 @@
         value
         (drop (cdr value) (- count 1))))
 
-    (define (map procedure value)
-      (if (null? value)
-        '()
-        (cons (procedure (car value))
-              (map procedure (cdr value)))))
-
     (define (filter predicate value)
       (if (null? value)
         '()
@@ -107,23 +94,6 @@
         (fold procedure
               (procedure (car value) seed)
               (cdr value))))
-
-    (define (member value values . maybe-equal)
-      (let ((same? (optional maybe-equal equal?)))
-        (if (null? values)
-          #f
-          (if (same? value (car values))
-            values
-            (member value (cdr values) same?)))))
-
-    (define (assoc key alist . maybe-equal)
-      (let ((same? (optional maybe-equal equal?)))
-        (if (null? alist)
-          #f
-          (let ((entry (car alist)))
-            (if (same? key (car entry))
-              entry
-              (assoc key (cdr alist) same?))))))
 
     (define (same-length? left right)
       (= (length left) (length right)))

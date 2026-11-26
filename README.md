@@ -81,6 +81,12 @@ positions. `hissp_scheme/runtime/control_runtime.py` holds the matching
 runtime: the tail-call trampoline, escape continuations, `dynamic-wind`, the
 exception-handler stack, multiple values, and parameter objects.
 
+`hissp_scheme/runtime/base_runtime.py` implements the `(scheme base)` numeric
+tower, `eqv?`/`equal?`, and the R7RS list procedures. `runtime/symbols.py`
+defines the `Symbol` type, `runtime/printer.py` the `write`/`display`
+notation, and `hissp_scheme/names.py` the spelling used for identifiers that
+are Python keywords.
+
 `hissp_scheme/scheme/scheme_pairs.sld` owns the core `Pair` runtime,
 fundamental list procedures, and the Python-list-backed vector substrate used
 by `(scheme base)`.
@@ -111,6 +117,7 @@ language, SRFIs, and optional libraries must be imported explicitly:
 (import (srfi 69))
 (import (srfi 177))
 (import (scheme write))
+(import (scheme inexact))
 (import (scheme read))
 (import (scheme file))
 (import (scheme string))
@@ -195,7 +202,12 @@ Implemented or usable:
 - Base syntax: `define`, `lambda`, `begin`, `if`, `let`, named `let`, `let*`,
   `letrec`, `letrec*`, `do`, `set!`, `and`, `or`, `when`, `unless`, `cond`,
   and `case`. `set!` on a local variable rebinds that local; internal
-  `define` stays local to its body.
+  `define` stays local to its body. A top-level `begin` defines globals, and
+  a `begin` directly in a body splices its definitions into that body.
+- Booleans: only `#f` is false. `0`, `""`, and `'()` are true, as in R7RS.
+  `not`, `boolean?`, and `boolean=?` are in base.
+- Identifiers: Python keywords such as `return`, `class`, and `in` work as
+  ordinary Scheme variable names.
 - Proper tail calls: a call in tail position of a procedure body (including
   the last form of `if`, `begin`, `let`-family bodies, `cond`, `case`, `and`,
   `or`, `when`, `unless`, and `do`) doesn't grow the Python stack. Self, mutual,
@@ -213,7 +225,27 @@ Implemented or usable:
   `letrec-syntax`, and the internal `syntax-case` hook used for procedural
   transformers.
 - Data basics: booleans, quoted/quasiquoted Scheme lists, mutable pairs, core
-  selectors/mutators, common list procedures, and mutable vectors.
+  selectors/mutators, and mutable vectors. Quoted data keeps string literals
+  as strings, so `'("x" y)` is a list of a string and a symbol.
+- Symbols: a distinct, interned `Symbol` type (a `str` subclass, for Python
+  interop) with `symbol?`, `symbol->string`, `string->symbol`, and `symbol=?`.
+  `string?` is false for symbols and `equal?` doesn't conflate them with
+  strings.
+- Equivalence: R7RS `eq?`, `eqv?` (exactness-aware for numbers), and
+  `equal?` (structural over pairs, vectors, and strings). `case` uses `eqv?`.
+- Numbers: exact integers and rationals (`fractions.Fraction`, reader syntax
+  `1/2`), inexact floats and complex numbers, `+inf.0`/`-inf.0`/`+nan.0`, and
+  `#x`/`#b`/`#o`/`#e`/`#i` prefixes. `/` of exact numbers stays exact.
+  Arithmetic and comparisons are variadic. Base has the R7RS numeric
+  procedures (`exact`, `inexact`, `quotient`, `floor/`, `exact-integer-sqrt`,
+  `number->string`, `string->number`, and the rest); `(scheme inexact)` has
+  `sqrt`, `exp`, `log`, the trigonometric functions, `nan?`, `infinite?`, and
+  `finite?`.
+- Lists: `map` and `for-each` (over several lists), `memq`/`memv`/`member`,
+  `assq`/`assv`/`assoc`, `list?`, `make-list`, `list-tail`, `list-set!`,
+  `list-copy`, `vector-map`, and `vector-for-each`.
+- Printing: `write`, `display`, and the REPL use Scheme notation (`#t`,
+  `"str"`, `1/2`, `#(1 2)`, `(a . b)`).
 - Rest parameters: dotted and variadic `define`/`lambda` forms bind Scheme
   `Pair` lists, not Python tuples.
 - SRFI modules: `(srfi 1)`, `(srfi 18)`, `(srfi 28)`, `(srfi 64)`,
@@ -221,8 +253,11 @@ Implemented or usable:
 
 Partial or intentionally explicit errors:
 
-- `case` compares with the current Python/Scheme equality behavior, not a full
-  R7RS numeric/character `eqv?` lattice.
+- Numeric procedures stay generic over Python operators, so `(+ "a" "b")`
+  concatenates and `=` compares any two values with `==` instead of raising
+  for non-numbers.
+- Characters are one-character strings, so `eqv?` can't tell `#\a` from
+  `"a"`.
 - SRFI-18 maps to CPython threads. Joining, sleeping, mutexes, condition
   variables, timeouts, and thread-local specific fields are implemented; safe
   forced termination of another live running thread is not available on CPython
@@ -244,10 +279,11 @@ Partial or intentionally explicit errors:
 - Local `set!` is detected from `set!` forms written in the variable's scope.
   A macro that expands into `set!` of a caller's local variable isn't detected,
   and assigns a module-level variable instead.
-- Scheme procedures are Python functions that run a small trampoline. Expect
-  call-heavy non-tail code (such as naive `fib`) to run roughly 1.5x slower
-  than plain Python lambdas would.
-- Python keywords such as `return` can't be used as variable names.
+- Scheme procedures are Python functions that run a small trampoline, and
+  `(scheme base)` arithmetic goes through Python functions (for variadic
+  arguments and exact rationals) rather than `operator`. Expect call-heavy
+  arithmetic code (such as naive `fib`) to run roughly 2x slower than plain
+  Python lambdas would.
 - SRFI-18 `raise` keeps SRFI-18's behavior of returning the handler's value,
   but it shares the handler stack with `(scheme base)`, so either library's
   handlers see the other's raises.

@@ -11,11 +11,12 @@
 
     (define (display value . maybe-port)
       (.write (optional-output-port maybe-port)
-              (if (isinstance value str) value (str value)))
+              (hissp_scheme.runtime.printer..display_string value))
       #f)
 
     (define (write value . maybe-port)
-      (.write (optional-output-port maybe-port) (repr value))
+      (.write (optional-output-port maybe-port)
+              (hissp_scheme.runtime.printer..write_string value))
       #f)
 
     (define (newline . maybe-port)

@@ -17,6 +17,9 @@ from pathlib import Path
 
 import hissp
 
+from hissp_scheme import names
+from hissp_scheme.runtime.symbols import Symbol
+
 
 current_source_file: str | None = None
 currentQzH_sourceQzH_file: str | None = None
@@ -25,13 +28,13 @@ currentQzH_sourceQzH_file: str | None = None
 def _scheme_py_name(symbol):
     """Convert a Scheme/Hissp symbol spelling to a Python API spelling."""
 
-    return hissp.demunge(symbol).replace("-", "_")
+    return names.demunge(symbol).replace("-", "_")
 
 
 def _scheme_local_name(name):
     """Convert a Python export name into the local Scheme binding name."""
 
-    return hissp.munge(name.replace("_", "-"))
+    return names.munge(name.replace("_", "-"))
 
 
 def _scheme_public_names(module):
@@ -46,13 +49,13 @@ def _scheme_public_names(module):
 def _scheme_module_name(symbol):
     """Convert a source module symbol to the Python importlib module name."""
 
-    return hissp.demunge(symbol).replace("-", "_")
+    return names.demunge(symbol).replace("-", "_")
 
 
 def _scheme_source_name(symbol):
     """Convert a reader symbol to the user-facing Scheme source spelling."""
 
-    return hissp.demunge(symbol)
+    return names.demunge(symbol)
 
 
 IMPORT_SET_OPERATORS = {"only", "except", "rename", "prefix"}
@@ -64,7 +67,7 @@ def _scheme_library_module_name(spec):
     if not isinstance(spec, tuple) or not spec:
         return None
 
-    if spec[0] in IMPORT_SET_OPERATORS:
+    if names.restore_keyword(spec[0]) in IMPORT_SET_OPERATORS:
         return None
 
     if spec[0] == "srfi" and len(spec) == 2:
@@ -88,14 +91,14 @@ def _scheme_export_tables(module):
         }
     else:
         value_exports = {
-            hissp.munge(name): value for name, value in value_exports.items()
+            names.munge(name): value for name, value in value_exports.items()
         }
 
     if macro_exports is None:
         macro_exports = {}
     else:
         macro_exports = {
-            hissp.munge(name): getattr(module._macro_, macro_name)
+            names.munge(name): getattr(module._macro_, macro_name)
             for name, macro_name in macro_exports.items()
         }
 
@@ -124,28 +127,28 @@ def _scheme_import_plan(spec):
     if not isinstance(spec, tuple) or not spec:
         raise SyntaxError("import spec must be a module name or import set")
 
-    operator = spec[0]
+    operator = names.restore_keyword(spec[0])
     if operator not in IMPORT_SET_OPERATORS:
         raise SyntaxError(
             f"unknown R7RS library name or import-set operator: "
-            f"{hissp.demunge(operator)}"
+            f"{names.demunge(operator)}"
         )
     if len(spec) < 2:
         raise SyntaxError(
-            f"import set {hissp.demunge(operator)} requires a nested import set"
+            f"import set {names.demunge(operator)} requires a nested import set"
         )
 
     value_exports, macro_exports = _scheme_import_plan(spec[1])
 
     if operator == "only":
-        selected = {hissp.munge(_scheme_source_name(name)) for name in spec[2:]}
+        selected = {names.munge(_scheme_source_name(name)) for name in spec[2:]}
         return (
             {name: value for name, value in value_exports.items() if name in selected},
             {name: value for name, value in macro_exports.items() if name in selected},
         )
 
     if operator == "except":
-        excluded = {hissp.munge(_scheme_source_name(name)) for name in spec[2:]}
+        excluded = {names.munge(_scheme_source_name(name)) for name in spec[2:]}
         return (
             {
                 name: value
@@ -166,8 +169,8 @@ def _scheme_import_plan(spec):
             if not isinstance(clause, tuple) or len(clause) != 2:
                 raise SyntaxError("rename clauses must be (old new) pairs")
             old, new = clause
-            old_name = hissp.munge(_scheme_source_name(old))
-            new_name = hissp.munge(_scheme_source_name(new))
+            old_name = names.munge(_scheme_source_name(old))
+            new_name = names.munge(_scheme_source_name(new))
             if old_name in value_exports:
                 renamed_values[new_name] = value_exports[old_name]
             if old_name in macro_exports:
@@ -177,19 +180,19 @@ def _scheme_import_plan(spec):
     if operator == "prefix":
         if len(spec) != 3:
             raise SyntaxError("prefix import set must be (prefix import-set prefix-id)")
-        prefix = hissp.demunge(spec[2])
+        prefix = names.demunge(spec[2])
         return (
             {
-                hissp.munge(prefix + hissp.demunge(name)): value
+                names.munge(prefix + names.demunge(name)): value
                 for name, value in value_exports.items()
             },
             {
-                hissp.munge(prefix + hissp.demunge(name)): value
+                names.munge(prefix + names.demunge(name)): value
                 for name, value in macro_exports.items()
             },
         )
 
-    raise AssertionError(f"unhandled import-set operator: {hissp.demunge(operator)}")
+    raise AssertionError(f"unhandled import-set operator: {names.demunge(operator)}")
 
 
 def install_import(env, spec):
@@ -222,6 +225,8 @@ def _scheme_export_spec(spec):
 def _scheme_sequence_to_tuple(value):
     """Convert Scheme Pair/list data to Python tuple data for metadata helpers."""
 
+    if isinstance(value, Symbol):
+        return names.rename_keyword(str(value))
     if isinstance(value, tuple):
         return value
     if isinstance(value, list):
@@ -249,7 +254,7 @@ def install_library_exports(env, specs):
 
     for spec in specs:
         internal_source, external_source = _scheme_export_spec(spec)
-        internal_name = hissp.munge(internal_source)
+        internal_name = names.munge(internal_source)
 
         if macro_namespace is not None and hasattr(macro_namespace, internal_name):
             macro_exports[external_source] = internal_name
@@ -337,13 +342,13 @@ def library_form(env, name, clauses):
             forms.extend(_scheme_include_forms(body))
         elif operator in {"include-ci", "include-library-declarations"}:
             raise SyntaxError(
-                f"define-library clause {hissp.demunge(operator)} is not implemented yet"
+                f"define-library clause {names.demunge(operator)} is not implemented yet"
             )
         elif operator == "cond-expand":
             raise SyntaxError("define-library cond-expand is not implemented yet")
         else:
             raise SyntaxError(
-                f"unsupported define-library clause: {hissp.demunge(operator)}"
+                f"unsupported define-library clause: {names.demunge(operator)}"
             )
 
     return (

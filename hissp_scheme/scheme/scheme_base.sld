@@ -12,6 +12,7 @@ scheme_bootstrap..prelude#:
 (import (only itertools chain))
 (import (only hissp_scheme.macro.syntax_rules
               expand-body-definitions
+              expand-sequence
               expand-let-syntax
               expand-letrec-syntax
               make-transformer-from-form
@@ -63,9 +64,11 @@ scheme_bootstrap..prelude#:
       (tuple (@ 'hissp.macros.._macro_.setQzAT_ target value)))))
 
 (defmacro begin (.#"*body")
-  ;; Scheme sequencing with support for an internal syntax-definition prefix.
+  ;; Scheme sequencing with support for a syntax-definition prefix. Runtime
+  ;; definitions stay in the surrounding scope, so a top-level `begin` defines
+  ;; globals. (A `begin` directly in a body is spliced by the body expander.)
   (hissp.macros.._macro_.let
-    (expanded (scheme_base..expandQzH_bodyQzH_definitions
+    (expanded (scheme_base..expandQzH_sequence
                 body
                 (scheme_base..syntaxQzH_rulesQzH_stableQzH_identifiers)))
     (tuple
@@ -207,25 +210,15 @@ scheme_bootstrap..prelude#:
       (@ 'begin)
       body)))
 
-(define (string-literal-form? value)
-  (and (isinstance value str)
-       (>= (len value) 2)
-       (= (op#getitem value 0) "(")
-       (= (op#getitem value 1) "'")))
-
 (define (case-datum-value-form datum)
-  ;; Case labels are datums. String literals already arrive as evaluable string
-  ;; literal forms; bare symbols need an explicit quote to stay data.
-  (if (and (isinstance datum str)
-           (not (string-literal-form? datum)))
-    (tuple (@ 'quote datum))
-    datum))
+  ;; Case labels are datums, so quote them as Scheme data.
+  (tuple (@ 'hissp_scheme.macro.quote.._macro_.quote datum)))
 
 (define (case-datum-list-form datums)
   (tuple
     (chain
       (@ 'QzAT_)
-      (map case-datum-value-form datums))))
+      (builtins..map case-datum-value-form datums))))
 
 (define (case-dispatch-form key clauses)
   (if (null? clauses)
@@ -245,9 +238,9 @@ scheme_bootstrap..prelude#:
             (tuple
               (@ 'if
                  (tuple
-                   (@ 'operator..contains
-                      (case-datum-list-form labels)
-                      key))
+                   (@ 'hissp_scheme.runtime.base_runtime..case_match_q
+                      key
+                      (case-datum-list-form labels)))
                  (case-body-form body)
                  (case-dispatch-form key remaining)))))))))
 
@@ -287,6 +280,91 @@ scheme_bootstrap..prelude#:
 (define file-error? hissp_scheme.runtime.control_runtime..file_error_q)
 (define read-error? hissp_scheme.runtime.control_runtime..read_error_q)
 (define make-parameter hissp_scheme.runtime.control_runtime..make_parameter)
+
+;; ---------------------------------------------------------------------------
+;; Booleans, equivalence, numbers, symbols, and lists
+;; ---------------------------------------------------------------------------
+;; Implemented in `hissp_scheme/runtime/base_runtime.py`. `not` comes from the
+;; bootstrap prelude, since library code needs it before base is loaded.
+
+(define boolean? hissp_scheme.runtime.booleans..boolean_q)
+(define boolean=? hissp_scheme.runtime.booleans..boolean_eq_q)
+(define eq? hissp_scheme.runtime.base_runtime..eq_q)
+(define eqv? hissp_scheme.runtime.base_runtime..eqv_q)
+(define equal? hissp_scheme.runtime.base_runtime..equal_q)
+
+(define + hissp_scheme.runtime.base_runtime..add)
+(define - hissp_scheme.runtime.base_runtime..sub)
+(define * hissp_scheme.runtime.base_runtime..mul)
+(define / hissp_scheme.runtime.base_runtime..div)
+(define = hissp_scheme.runtime.base_runtime..num_eq)
+(define < hissp_scheme.runtime.base_runtime..num_lt)
+(define > hissp_scheme.runtime.base_runtime..num_gt)
+(define <= hissp_scheme.runtime.base_runtime..num_le)
+(define >= hissp_scheme.runtime.base_runtime..num_ge)
+(define number? hissp_scheme.runtime.base_runtime..number_q)
+(define complex? hissp_scheme.runtime.base_runtime..complex_q)
+(define real? hissp_scheme.runtime.base_runtime..real_q)
+(define rational? hissp_scheme.runtime.base_runtime..rational_q)
+(define integer? hissp_scheme.runtime.base_runtime..integer_q)
+(define exact? hissp_scheme.runtime.base_runtime..exact_q)
+(define inexact? hissp_scheme.runtime.base_runtime..inexact_q)
+(define exact-integer? hissp_scheme.runtime.base_runtime..exact_integer_q)
+(define zero? hissp_scheme.runtime.base_runtime..zero_q)
+(define positive? hissp_scheme.runtime.base_runtime..positive_q)
+(define negative? hissp_scheme.runtime.base_runtime..negative_q)
+(define odd? hissp_scheme.runtime.base_runtime..odd_q)
+(define even? hissp_scheme.runtime.base_runtime..even_q)
+(define max hissp_scheme.runtime.base_runtime..max_)
+(define min hissp_scheme.runtime.base_runtime..min_)
+(define abs hissp_scheme.runtime.base_runtime..abs_)
+(define quotient hissp_scheme.runtime.base_runtime..truncate_quotient)
+(define remainder hissp_scheme.runtime.base_runtime..truncate_remainder)
+(define modulo hissp_scheme.runtime.base_runtime..floor_remainder)
+(define floor/ hissp_scheme.runtime.base_runtime..floor_slash)
+(define floor-quotient hissp_scheme.runtime.base_runtime..floor_quotient)
+(define floor-remainder hissp_scheme.runtime.base_runtime..floor_remainder)
+(define truncate/ hissp_scheme.runtime.base_runtime..truncate_slash)
+(define truncate-quotient hissp_scheme.runtime.base_runtime..truncate_quotient)
+(define truncate-remainder hissp_scheme.runtime.base_runtime..truncate_remainder)
+(define gcd hissp_scheme.runtime.base_runtime..gcd)
+(define lcm hissp_scheme.runtime.base_runtime..lcm)
+(define numerator hissp_scheme.runtime.base_runtime..numerator)
+(define denominator hissp_scheme.runtime.base_runtime..denominator)
+(define floor hissp_scheme.runtime.base_runtime..floor)
+(define ceiling hissp_scheme.runtime.base_runtime..ceiling)
+(define truncate hissp_scheme.runtime.base_runtime..truncate)
+(define round hissp_scheme.runtime.base_runtime..round_)
+(define exact hissp_scheme.runtime.base_runtime..exact)
+(define inexact hissp_scheme.runtime.base_runtime..inexact)
+(define exact->inexact hissp_scheme.runtime.base_runtime..inexact)
+(define inexact->exact hissp_scheme.runtime.base_runtime..exact)
+(define square hissp_scheme.runtime.base_runtime..square)
+(define exact-integer-sqrt hissp_scheme.runtime.base_runtime..exact_integer_sqrt)
+(define expt hissp_scheme.runtime.base_runtime..expt)
+(define number->string hissp_scheme.runtime.base_runtime..number_to_string)
+(define string->number hissp_scheme.runtime.base_runtime..string_to_number)
+
+(define symbol? hissp_scheme.runtime.symbols..symbol_q)
+(define symbol->string hissp_scheme.runtime.symbols..symbol_to_string)
+(define string->symbol hissp_scheme.runtime.symbols..string_to_symbol)
+(define symbol=? hissp_scheme.runtime.symbols..symbol_eq_q)
+
+(define list? hissp_scheme.runtime.base_runtime..list_q)
+(define make-list hissp_scheme.runtime.base_runtime..make_list)
+(define list-tail hissp_scheme.runtime.base_runtime..list_tail)
+(define list-set! hissp_scheme.runtime.base_runtime..list_set_bang)
+(define list-copy hissp_scheme.runtime.base_runtime..list_copy)
+(define memq hissp_scheme.runtime.base_runtime..memq)
+(define memv hissp_scheme.runtime.base_runtime..memv)
+(define member hissp_scheme.runtime.base_runtime..member)
+(define assq hissp_scheme.runtime.base_runtime..assq)
+(define assv hissp_scheme.runtime.base_runtime..assv)
+(define assoc hissp_scheme.runtime.base_runtime..assoc)
+(define map hissp_scheme.runtime.base_runtime..map_)
+(define for-each hissp_scheme.runtime.base_runtime..for_each)
+(define vector-map hissp_scheme.runtime.base_runtime..vector_map)
+(define vector-for-each hissp_scheme.runtime.base_runtime..vector_for_each)
 
 ;; `raise` is a Python keyword, so it can't be an ordinary global binding.
 (define raise-transformer hissp_scheme.macro.tail..raise_form)
@@ -353,6 +431,70 @@ scheme_bootstrap..prelude#:
     read-error?
     make-parameter
     parameterize
+    not
+    boolean?
+    boolean=?
+    number?
+    complex?
+    real?
+    rational?
+    integer?
+    exact?
+    inexact?
+    exact-integer?
+    zero?
+    positive?
+    negative?
+    odd?
+    even?
+    max
+    min
+    abs
+    quotient
+    remainder
+    modulo
+    floor/
+    floor-quotient
+    floor-remainder
+    truncate/
+    truncate-quotient
+    truncate-remainder
+    gcd
+    lcm
+    numerator
+    denominator
+    floor
+    ceiling
+    truncate
+    round
+    exact
+    inexact
+    exact->inexact
+    inexact->exact
+    square
+    exact-integer-sqrt
+    expt
+    number->string
+    string->number
+    symbol?
+    symbol->string
+    string->symbol
+    symbol=?
+    list?
+    make-list
+    list-tail
+    list-set!
+    list-copy
+    memq
+    memv
+    member
+    assq
+    assv
+    assoc
+    map
+    for-each
+    vector-map
+    vector-for-each
     cons
     list
     eq?

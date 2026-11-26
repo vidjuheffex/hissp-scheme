@@ -8,6 +8,11 @@ bindings, and the small procedural `syntax-case` hook.
 import builtins
 import itertools
 
+from hissp_scheme import names
+from hissp_scheme.macro.quote import QUOTE
+
+_QUOTE_HEADS = ("quote", QUOTE)
+
 
 WILDCARD = "_"
 _gensym_counter = itertools.count(1)
@@ -345,7 +350,7 @@ def _rewrite_internal_definition_references(form, cells):
         return form
 
     operator = form[0]
-    if operator == "quote":
+    if operator in _QUOTE_HEADS:
         return form
 
     if (
@@ -376,7 +381,7 @@ def _collect_assigned_names(form, candidates, found):
         return
 
     operator = form[0]
-    if operator == "quote":
+    if operator in _QUOTE_HEADS:
         return
 
     if (
@@ -867,10 +872,20 @@ def _syntax_case_transformer(name, transformer_form, env):
         raise TypeError(f"syntax-case transformer is not callable: {procedure_name}")
 
     def transformer(*args):
-        return procedure(*args)
+        return _plain_forms(procedure(*args))
 
     transformer.__name__ = str(name)
     return transformer
+
+
+def _plain_forms(form):
+    # Scheme-written transformers build forms with quoted symbols, which are
+    # `Symbol` objects. Hissp only treats exact `str` atoms as symbols.
+    if isinstance(form, str) and type(form) is not str:
+        return names.rename_keyword(str(form))
+    if type(form) is tuple:
+        return tuple(_plain_forms(item) for item in form)
+    return form
 
 
 def make_transformer_from_form(
@@ -919,7 +934,7 @@ def _expand_local_macros(form, local_macros):
         return form
 
     operator = form[0]
-    if operator == "quote":
+    if operator in _QUOTE_HEADS:
         return form
 
     if isinstance(operator, str) and operator in local_macros:
@@ -1068,7 +1083,9 @@ def expand_body_definitions(body, stable_identifiers=None):
     # Hissp. Runtime definitions remain ordinary body forms; only
     # `define-syntax` is consumed here because it is a compile-time binding.
     stable_identifiers = syntax_rules_stable_identifiers(stable_identifiers or ())
-    syntax_forms, body_forms = _split_internal_syntax_definitions(tuple(body))
+    syntax_forms, body_forms = _split_internal_syntax_definitions(
+        _splice_begin_forms(body)
+    )
 
     if not syntax_forms:
         return _expand_internal_runtime_definitions(body_forms)
@@ -1078,6 +1095,30 @@ def expand_body_definitions(body, stable_identifiers=None):
         _expand_local_macros(form, local_macros) for form in body_forms
     )
     return _expand_internal_runtime_definitions(expanded_body)
+
+
+def _splice_begin_forms(body):
+    # A `begin` directly in a body is spliced into it, so definitions inside
+    # it are internal definitions of the enclosing body.
+    result = []
+    for form in body:
+        if type(form) is tuple and form and form[0] == "begin":
+            result.extend(_splice_begin_forms(form[1:]))
+        else:
+            result.append(form)
+    return tuple(result)
+
+
+def expand_sequence(body, stable_identifiers=None):
+    # Expand the forms of a `begin` that isn't directly in a body: a top-level
+    # `begin` or one in expression position. Its definitions belong to the
+    # surrounding scope, so only `define-syntax` forms are consumed here.
+    stable_identifiers = syntax_rules_stable_identifiers(stable_identifiers or ())
+    syntax_forms, body_forms = _split_internal_syntax_definitions(tuple(body))
+    if not syntax_forms:
+        return body_forms
+    local_macros = _internal_syntax_table(syntax_forms, stable_identifiers)
+    return tuple(_expand_local_macros(form, local_macros) for form in body_forms)
 
 
 def expand_let_syntax(bindings, body, stable_identifiers=None):

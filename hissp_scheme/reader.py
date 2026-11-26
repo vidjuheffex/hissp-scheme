@@ -27,6 +27,10 @@ from pathlib import Path, PurePath
 
 from hissp.reader import Comment, Kwarg, Lexer, Lissp, Parser, _Unquote
 
+from hissp_scheme import names
+from hissp_scheme.macro.quote import QUOTE, is_string_literal_form
+from hissp_scheme.runtime.numeric_syntax import number_literal
+
 
 SCHEME_PRELUDE_TAG = "scheme..prelude#:"
 SCHEME_BOOTSTRAP_PRELUDE_TAG = "scheme_bootstrap..prelude#:"
@@ -82,24 +86,33 @@ def read_scheme_source_forms(path: Path | str) -> tuple:
     path = Path(path).resolve(strict=True)
     reader = SchemeLissp(evaluate=False, filename=str(path))
     reader.scheme_quote_lists = True
+    reader.scheme_symbols = True
     return tuple(reader.reads(re.sub(r"^#!.*\n", "", path.read_text("utf8"))))
 
 
-def _quote_atom(form):
+def _quote_atom(form, symbols=False):
     """Return a runtime expression for one quoted Scheme atom."""
 
     if type(form) is Kwarg and form.v in {"QzQUERY_", "?"}:
-        return ("quote", f"{form.k}QzEQ_QzQUERY_")
+        form = f"{form.k}QzEQ_QzQUERY_"
+    if symbols:
+        return (QUOTE, form)
     if isinstance(form, str):
+        if is_string_literal_form(form):
+            return form
         return ("quote", form)
     return form
 
 
-def _scheme_quote(form):
-    """Lower quoted list-shaped reader data into core `Pair` constructors.
+def _scheme_quote(form, symbols=False):
+    """Lower quoted reader data into a runtime expression.
 
-    Hissp quote turns quoted parenthesized forms into Python tuples. Scheme
-    quote should instead produce Scheme list structure. This function converts:
+    In Scheme source (`symbols=True`) the whole datum becomes a `QUOTE` macro
+    form, which produces `Pair` lists and interned `Symbol`s when compiled.
+
+    Bootstrap-dialect files (`scheme_bootstrap..prelude#:`) build Hissp code
+    with quote, so there quoted symbols stay plain Hissp strings and only list
+    structure is lowered:
 
         '(1 2 3)     -> (scheme_pairs.cons 1 (scheme_pairs.cons 2 ...))
         '(1 2 . 3)   -> (scheme_pairs.cons 1 (scheme_pairs.cons 2 3))
@@ -108,6 +121,9 @@ def _scheme_quote(form):
     The empty list remains Python's empty tuple `()`, which is already the
     empty-list sentinel used by `src/scheme_pairs.sld`.
     """
+
+    if symbols:
+        return (QUOTE, form)
 
     if not isinstance(form, tuple):
         return _quote_atom(form)
@@ -139,7 +155,7 @@ def _scheme_list_expr(items, tail=()):
     return result
 
 
-def _scheme_quasiquote(form, *, in_list=False):
+def _scheme_quasiquote(form, *, in_list=False, symbols=False):
     """Lower Scheme quasiquote into runtime Pair construction.
 
     Hissp's reader already recognizes backtick, comma, and comma-at, but its
@@ -162,13 +178,13 @@ def _scheme_quasiquote(form, *, in_list=False):
         raise SyntaxError(f"unsupported unquote target: {form.target}")
 
     if not isinstance(form, tuple):
-        return _quote_atom(form)
+        return _quote_atom(form, symbols)
 
     if not form:
         return ()
 
     if len(form) >= 3 and form[-2] == ".":
-        tail = _scheme_quasiquote(form[-1])
+        tail = _scheme_quasiquote(form[-1], symbols=symbols)
         items = form[:-2]
     elif "." in form:
         raise SyntaxError(
@@ -188,7 +204,7 @@ def _scheme_quasiquote(form, *, in_list=False):
             normal_items.clear()
 
     for item in items:
-        lowered = _scheme_quasiquote(item, in_list=True)
+        lowered = _scheme_quasiquote(item, in_list=True, symbols=symbols)
         if type(lowered) is _Unquote and lowered.target == ":*":
             saw_splice = True
             flush_normal_items()
@@ -209,19 +225,23 @@ def _scheme_quasiquote(form, *, in_list=False):
     return ("scheme_pairs..scheme_append", *segments)
 
 
-def _scheme_form(form):
-    """Rewrite parsed forms that need Scheme-level reader semantics."""
+def _scheme_form(form, symbols=False):
+    """Rewrite parsed forms that need Scheme-level reader semantics.
+
+    `symbols` selects Scheme quote semantics (see `_scheme_quote`).
+    """
 
     if type(form) is Kwarg and form.v in {"QzQUERY_", "?"}:
         return f"{form.k}QzEQ_QzQUERY_"
 
-    if (
-        isinstance(form, tuple)
-        and len(form) == 2
-        and form[0] == "quote"
-        and isinstance(form[1], tuple)
-    ):
-        return _scheme_quote(form[1])
+    if isinstance(form, str):
+        return names.rename_keyword(form)
+
+    if isinstance(form, tuple) and len(form) == 2 and form[0] == "quote":
+        if symbols or isinstance(form[1], tuple):
+            return _scheme_quote(form[1], symbols)
+        if is_string_literal_form(form[1]):
+            return form[1]
 
     def rewrite_lambda_forms(value):
         # Only lambda needs recursive source rewriting. Do not recursively apply
@@ -233,7 +253,7 @@ def _scheme_form(form):
             return value
         if not isinstance(value, tuple):
             return value
-        if value and value[0] == "quote":
+        if value and value[0] in ("quote", QUOTE):
             return value
         value = tuple(rewrite_lambda_forms(item) for item in value)
         value = _collapse_question_suffix_symbols(value)
@@ -315,11 +335,20 @@ class SchemeParser(Parser):
 
         return form
 
+    def bare(self, v: str):
+        if getattr(self.lissp, "scheme_quote_lists", False):
+            number = number_literal(v)
+            if number is not None:
+                return number
+        return super().bare(v)
+
     def _template(self, v: str):
         if not getattr(self.lissp, "scheme_quote_lists", False):
             return super()._template(v)
         with self.gensym_context():
-            return _scheme_quasiquote(self._pull(v))
+            return _scheme_quasiquote(
+                self._pull(v), symbols=getattr(self.lissp, "scheme_symbols", False)
+            )
 
     def _parse(self):
         if not getattr(self.lissp, "scheme_quote_lists", False):
@@ -375,7 +404,7 @@ class SchemeParser(Parser):
                 form = self.bare(v)
 
             if getattr(self.lissp, "scheme_quote_lists", False):
-                form = _scheme_form(form)
+                form = _scheme_form(form, getattr(self.lissp, "scheme_symbols", False))
             yield form
         self._check_depth()
 
@@ -394,7 +423,13 @@ class SchemeLissp(Lissp):
 
     def compile(self, code: str) -> str:
         previous = getattr(self, "scheme_quote_lists", False)
+        previous_symbols = getattr(self, "scheme_symbols", False)
         self.scheme_quote_lists = _uses_scheme_language(code, self.filename)
+        # Bootstrap-dialect files build Hissp code with quote, so quoted
+        # symbols there stay plain Hissp strings.
+        self.scheme_symbols = (
+            self.scheme_quote_lists and SCHEME_BOOTSTRAP_PRELUDE_TAG not in code
+        )
         if self.filename:
             _set_current_source_file(Path(self.filename))
         if _needs_implicit_scheme_prelude(code, self.filename):
@@ -403,6 +438,7 @@ class SchemeLissp(Lissp):
             return super().compile(code)
         finally:
             self.scheme_quote_lists = previous
+            self.scheme_symbols = previous_symbols
 
 
 def transpile_scheme_file(

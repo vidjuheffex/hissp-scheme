@@ -69,9 +69,15 @@ hissp..prelude#:
       body)))
 
 (defmacro if (test consequent alternate)
-  ;; Scheme `if` requires an alternate here. This maps directly to Hissp's
-  ;; expression-oriented `if-else` macro.
-  (tuple (@ 'hissp.macros.._macro_.ifQzH_else test consequent alternate)))
+  ;; Scheme `if` requires an alternate here. Only `#f` is false in Scheme, so
+  ;; this can't use Hissp's `if-else`, which follows Python truthiness (where
+  ;; 0, "", and the empty list `()` are false). Same shape as `if-else`: the
+  ;; branches are thunks so only the chosen one runs.
+  (tuple
+    (@ (tuple (@ 'lambda 'bca '|c()if b is not False else a()|))
+       test
+       (tuple (@ 'lambda ': consequent))
+       (tuple (@ 'lambda ': alternate)))))
 
 (defun let-pair (binding)
   ;; Validate one binding in Scheme-shaped `let`:
@@ -176,9 +182,11 @@ hissp..prelude#:
        (tuple (@ 'hissp.macros.._macro_.define 'QzGT_ 'operator..gt))
        (tuple (@ 'hissp.macros.._macro_.define 'QzLT_QzEQ_ 'operator..le))
        (tuple (@ 'hissp.macros.._macro_.define 'QzGT_QzEQ_ 'operator..ge))
-       ;; Scheme booleans.
+       ;; Scheme booleans. `not` is a Python keyword, so Scheme source spells
+       ;; it `_Qzkw_not` (see `hissp_scheme.names`).
        (tuple (@ 'hissp.macros.._macro_.define 'QzHASH_t True))
        (tuple (@ 'hissp.macros.._macro_.define 'QzHASH_f False))
+       (tuple (@ 'hissp.macros.._macro_.define '_Qzkw_not 'hissp_scheme.runtime.booleans..not_))
        ;; Macro aliases. Some names (`lambda`, `if`, `let`, `import`) collide
        ;; with Python/Hissp names or require string lookup, so use `getattr`
        ;; where direct dotted access is awkward.

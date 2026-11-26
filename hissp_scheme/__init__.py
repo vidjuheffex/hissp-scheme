@@ -11,6 +11,7 @@ CORE_LIBRARY_PATHS = (
     ("scheme", "scheme_pairs.sld"),
     ("scheme", "scheme.sld"),
     ("scheme", "scheme_base.sld"),
+    ("scheme", "scheme_inexact.sld"),
     ("scheme", "scheme_write.sld"),
     ("scheme", "scheme_read.sld"),
     ("scheme", "scheme_string.sld"),

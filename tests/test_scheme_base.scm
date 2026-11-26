@@ -151,9 +151,8 @@
 
   ;; SRFIs are not ambient base bindings. Each module must import the SRFI it
   ;; wants before using that SRFI's procedures or macros.
-  (test-equal "srfi-1 map is not base"
-              #f
-              (pair? (map (lambda (x) x) my-list)))
+  (test-error "srfi-1 iota is not base" NameError
+              (iota 3))
   (test-error "srfi-28 format is not base" ValueError
               (format "~a" "x"))
   (test-error "srfi-177 call/kw is not base" NameError
