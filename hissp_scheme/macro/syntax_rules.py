@@ -9,31 +9,68 @@ import builtins
 import itertools
 
 
-WILDCARD = '_'
+WILDCARD = "_"
 _gensym_counter = itertools.count(1)
 
 
 DEFAULT_STABLE_IDENTIFIERS = {
     # Special forms and Scheme macro names that should remain visible to the
     # target expansion environment.
-    'quote', 'if', 'begin', 'lambda', 'schemeQzH_lambda', 'let', 'define', 'defineQzH_syntax',
-    'letQzH_syntax', 'letrecQzH_syntax', 'syntaxQzH_rules', 'setQzBANG_',
-    'import', 'include',
-    'and', 'or', 'when', 'unless', 'cond', 'case', 'caseQzH_dispatch',
-
+    "quote",
+    "if",
+    "begin",
+    "lambda",
+    "schemeQzH_lambda",
+    "let",
+    "letQzSTAR_",
+    "letrec",
+    "letrecQzSTAR_",
+    "do",
+    "guard",
+    "parameterize",
+    "raise",
+    "define",
+    "defineQzH_syntax",
+    "letQzH_syntax",
+    "letrecQzH_syntax",
+    "syntaxQzH_rules",
+    "setQzBANG_",
+    "import",
+    "include",
+    "and",
+    "or",
+    "when",
+    "unless",
+    "cond",
+    "case",
+    "caseQzH_dispatch",
     # Boolean constants installed by the base prelude.
-    'QzHASH_t', 'QzHASH_f',
-
+    "QzHASH_t",
+    "QzHASH_f",
     # Common operators.
-    'QzPLUS_', 'QzH_', 'QzSTAR_', 'QzSOL_', 'QzEQ_', 'QzLT_', 'QzGT_',
-    'QzLT_QzEQ_', 'QzGT_QzEQ_', 'opQzHASH_contains',
-
+    "QzPLUS_",
+    "QzH_",
+    "QzSTAR_",
+    "QzSOL_",
+    "QzEQ_",
+    "QzLT_",
+    "QzGT_",
+    "QzLT_QzEQ_",
+    "QzGT_QzEQ_",
+    "opQzHASH_contains",
     # Core pair/list procedures. SRFI procedures are intentionally not listed
     # here: libraries must import the SRFIs they use, and SRFI-specific stable
     # identifiers should come from the macro definition site or explicit
     # syntax-rules literals.
-    'cons', 'list', 'car', 'cdr', 'pairQzQUERY_', 'nullQzQUERY_', 'append',
-    'reverse', 'length',
+    "cons",
+    "list",
+    "car",
+    "cdr",
+    "pairQzQUERY_",
+    "nullQzQUERY_",
+    "append",
+    "reverse",
+    "length",
 }
 
 
@@ -74,18 +111,23 @@ def _is_literal_string_form(value):
     # Hissp represents string literals as strings containing a Python string
     # expression. These are data, not identifiers, so hygiene must never rename
     # them.
-    return isinstance(value, str) and len(value) >= 2 and value[0] == '(' and value[1] == chr(39)
+    return (
+        isinstance(value, str)
+        and len(value) >= 2
+        and value[0] == "("
+        and value[1] == chr(39)
+    )
 
 
 def _is_define_syntax_form(form):
     # Internal syntax definitions arrive here as ordinary reader data. The
     # spelling is already Hissp-munged because source `define-syntax` is not a
     # legal Python identifier.
-    return isinstance(form, tuple) and len(form) == 3 and form[0] == 'defineQzH_syntax'
+    return isinstance(form, tuple) and len(form) == 3 and form[0] == "defineQzH_syntax"
 
 
 def _is_define_form(form):
-    return isinstance(form, tuple) and len(form) >= 3 and form[0] == 'define'
+    return isinstance(form, tuple) and len(form) >= 3 and form[0] == "define"
 
 
 def _definition_name(form):
@@ -94,18 +136,18 @@ def _definition_name(form):
     head = form[1]
     if isinstance(head, str):
         if len(form) != 3:
-            raise SyntaxError('value-style internal define requires exactly one value')
+            raise SyntaxError("value-style internal define requires exactly one value")
         return head
     if isinstance(head, tuple) and head and isinstance(head[0], str):
         return head[0]
-    raise SyntaxError('internal define requires an identifier or function head')
+    raise SyntaxError("internal define requires an identifier or function head")
 
 
 def _definition_value_form(form):
     head = form[1]
     if isinstance(head, str):
         return form[2]
-    return ('schemeQzH_lambda', tuple(head[1:]), *form[2:])
+    return ("schemeQzH_lambda", tuple(head[1:]), *form[2:])
 
 
 def _formal_names(formals):
@@ -115,27 +157,184 @@ def _formal_names(formals):
         return set()
     names = set()
     for item in formals:
-        if item == '.':
+        if item == ".":
             continue
         if isinstance(item, str):
             names.add(item)
     return names
 
 
+CELL_PREFIX = "_Qzcell_"
+
+
+def _new_cell_name(name):
+    return f"{CELL_PREFIX}{next(_gensym_counter)}_{name}"
+
+
+def cell_ref_form(cell_name):
+    # A raw Python fragment rather than a call: cell reads sit on hot paths such
+    # as named-let loop variables.
+    return f"{cell_name}[0]"
+
+
+def cell_name_from_ref_form(form):
+    # Inverse of `cell_ref_form`, used by `set!` when a macro passes an already
+    # rewritten local reference as its target.
+    if (
+        isinstance(form, str)
+        and form.startswith(CELL_PREFIX)
+        and form.endswith("[0]")
+    ):
+        return form[:-3]
+    return None
+
+
 def _rewrite_internal_definition_symbol(symbol, cells):
     if symbol in cells:
-        return ('hissp_scheme.macro.syntax_rules..cell_ref', cells[symbol])
+        return cell_ref_form(cells[symbol])
 
     for name in sorted(cells, key=len, reverse=True):
-        prefix = f'{name}.'
+        prefix = f"{name}."
         if not symbol.startswith(prefix):
             continue
-        value = ('hissp_scheme.macro.syntax_rules..cell_ref', cells[name])
-        for attribute in symbol[len(prefix):].split('.'):
-            value = ('getattr', value, f"('{attribute}')")
+        value = cell_ref_form(cells[name])
+        for attribute in symbol[len(prefix) :].split("."):
+            value = ("getattr", value, f"('{attribute}')")
         return value
 
     return symbol
+
+
+def _without(mapping, names):
+    if not names:
+        return mapping
+    return {name: value for name, value in mapping.items() if name not in names}
+
+
+def _binding_pair_names(bindings):
+    return [
+        binding[0]
+        for binding in bindings
+        if isinstance(binding, tuple) and binding and isinstance(binding[0], str)
+    ]
+
+
+def _scoped_parts(form):
+    """Describe the lexical scopes of a Scheme binding form.
+
+    Returns a list of `(subform, shadowed_names)` pairs covering every subform
+    that should be walked, or `None` when `form` isn't a binding form. Binding
+    names themselves are left out so walkers never rewrite them.
+    """
+
+    operator = form[0]
+
+    if operator in {"schemeQzH_lambda", "lambda"} and len(form) >= 3:
+        shadowed = _formal_names(form[1])
+        return [(item, shadowed) for item in form[2:]]
+
+    if operator == "define" and len(form) >= 3 and isinstance(form[1], tuple):
+        shadowed = _formal_names(form[1][1:])
+        return [(item, shadowed) for item in form[2:]]
+
+    if operator == "define" and len(form) == 3:
+        return [(form[2], set())]
+
+    if operator in {"let", "letQzSTAR_", "letrec", "letrecQzSTAR_"} and len(form) >= 3:
+        named = operator == "let" and isinstance(form[1], str)
+        bindings = form[2] if named else form[1]
+        body = form[3:] if named else form[2:]
+        if not isinstance(bindings, tuple):
+            return None
+        names = _binding_pair_names(bindings)
+        all_names = set(names) | ({form[1]} if named else set())
+        parts = []
+        for index, binding in enumerate(bindings):
+            if not (isinstance(binding, tuple) and len(binding) == 2):
+                continue
+            if operator in {"letrec", "letrecQzSTAR_"}:
+                init_shadowed = set(names)
+            elif operator == "letQzSTAR_":
+                init_shadowed = set(names[:index])
+            else:
+                init_shadowed = set()
+            parts.append((binding[1], init_shadowed))
+        parts.extend((item, all_names) for item in body)
+        return parts
+
+    if operator == "do" and len(form) >= 3 and isinstance(form[1], tuple):
+        specs = form[1]
+        names = set(_binding_pair_names(specs))
+        parts = []
+        for spec in specs:
+            if isinstance(spec, tuple) and len(spec) >= 2:
+                parts.append((spec[1], set()))
+                parts.extend((step, names) for step in spec[2:])
+        parts.append((form[2], names))
+        parts.extend((item, names) for item in form[3:])
+        return parts
+
+    return None
+
+
+def _rebuild_scoped(form, rewrite):
+    """Rebuild a binding form, applying `rewrite(subform, shadowed)` to parts."""
+
+    operator = form[0]
+
+    if operator in {"schemeQzH_lambda", "lambda"} or operator == "define":
+        parts = _scoped_parts(form)
+        head_length = len(form) - len(parts)
+        return (*form[:head_length], *(rewrite(item, shadowed) for item, shadowed in parts))
+
+    if operator in {"let", "letQzSTAR_", "letrec", "letrecQzSTAR_"}:
+        named = operator == "let" and isinstance(form[1], str)
+        bindings = form[2] if named else form[1]
+        body = form[3:] if named else form[2:]
+        names = _binding_pair_names(bindings)
+        all_names = set(names) | ({form[1]} if named else set())
+        new_bindings = []
+        for index, binding in enumerate(bindings):
+            if not (isinstance(binding, tuple) and len(binding) == 2):
+                new_bindings.append(binding)
+                continue
+            if operator in {"letrec", "letrecQzSTAR_"}:
+                init_shadowed = set(names)
+            elif operator == "letQzSTAR_":
+                init_shadowed = set(names[:index])
+            else:
+                init_shadowed = set()
+            new_bindings.append((binding[0], rewrite(binding[1], init_shadowed)))
+        head = (operator, form[1]) if named else (operator,)
+        return (
+            *head,
+            tuple(new_bindings),
+            *(rewrite(item, all_names) for item in body),
+        )
+
+    if operator == "do":
+        specs = form[1]
+        names = set(_binding_pair_names(specs))
+        new_specs = []
+        for spec in specs:
+            if isinstance(spec, tuple) and len(spec) >= 2:
+                new_specs.append(
+                    (
+                        spec[0],
+                        rewrite(spec[1], set()),
+                        *(rewrite(step, names) for step in spec[2:]),
+                    )
+                )
+            else:
+                new_specs.append(spec)
+        return (
+            operator,
+            tuple(new_specs),
+            rewrite(form[2], names),
+            *(rewrite(item, names) for item in form[3:]),
+        )
+
+    raise AssertionError(f"not a binding form: {operator!r}")
 
 
 def _rewrite_internal_definition_references(form, cells):
@@ -146,49 +345,88 @@ def _rewrite_internal_definition_references(form, cells):
         return form
 
     operator = form[0]
-    if operator == 'quote':
+    if operator == "quote":
         return form
 
-    if operator in {'setQzBANG_', 'set!'} and len(form) == 3 and isinstance(form[1], str):
+    if (
+        operator in {"setQzBANG_", "set!"}
+        and len(form) == 3
+        and isinstance(form[1], str)
+    ):
         if form[1] in cells:
             return (
-                'hissp_scheme.macro.syntax_rules..cell_set',
+                "hissp_scheme.macro.syntax_rules..cell_set",
                 cells[form[1]],
                 _rewrite_internal_definition_references(form[2], cells),
             )
 
-    if operator in {'schemeQzH_lambda', 'lambda'} and len(form) >= 3:
-        shadowed = _formal_names(form[1])
-        nested_cells = {name: cell_name for name, cell_name in cells.items() if name not in shadowed}
-        return (
-            operator,
-            form[1],
-            *(_rewrite_internal_definition_references(item, nested_cells) for item in form[2:]),
-        )
-
-    if operator == 'let' and len(form) >= 3 and isinstance(form[1], tuple):
-        binding_names = {
-            binding[0]
-            for binding in form[1]
-            if isinstance(binding, tuple) and len(binding) == 2 and isinstance(binding[0], str)
-        }
-        body_cells = {name: cell_name for name, cell_name in cells.items() if name not in binding_names}
-        rewritten_bindings = tuple(
-            (
-                binding[0],
-                _rewrite_internal_definition_references(binding[1], cells),
-            )
-            if isinstance(binding, tuple) and len(binding) == 2
-            else binding
-            for binding in form[1]
-        )
-        return (
-            operator,
-            rewritten_bindings,
-            *(_rewrite_internal_definition_references(item, body_cells) for item in form[2:]),
+    if _scoped_parts(form) is not None:
+        return _rebuild_scoped(
+            form,
+            lambda item, shadowed: _rewrite_internal_definition_references(
+                item, _without(cells, shadowed)
+            ),
         )
 
     return tuple(_rewrite_internal_definition_references(item, cells) for item in form)
+
+
+def _collect_assigned_names(form, candidates, found):
+    if not candidates or not isinstance(form, tuple) or not form:
+        return
+
+    operator = form[0]
+    if operator == "quote":
+        return
+
+    if (
+        operator in {"setQzBANG_", "set!"}
+        and len(form) == 3
+        and isinstance(form[1], str)
+        and form[1] in candidates
+    ):
+        found.add(form[1])
+
+    parts = _scoped_parts(form)
+    if parts is not None:
+        for item, shadowed in parts:
+            _collect_assigned_names(item, candidates - shadowed, found)
+        return
+
+    for item in form:
+        _collect_assigned_names(item, candidates, found)
+
+
+def box_assigned_locals(names, body):
+    """Move locals that are targets of `set!` into mutable cells.
+
+    Hissp lowers Scheme bodies to nested Python lambdas, which can't rebind an
+    enclosing variable (there is no `nonlocal` in an expression). Each assigned
+    name in `names` is copied into a cell at the top of `body`, and every
+    reference and `set!` inside `body` goes through the cell instead.
+
+    Only `set!` forms visible in the source are found; a macro that expands
+    into `set!` of a caller's variable isn't detected.
+    """
+
+    body = tuple(body)
+    found = set()
+    for form in body:
+        _collect_assigned_names(form, set(names), found)
+    if not found:
+        return body
+
+    cells = {name: _new_cell_name(name) for name in sorted(found)}
+    bindings = tuple(
+        itertools.chain.from_iterable(
+            (cell_name, ("hissp_scheme.macro.syntax_rules..cell", name))
+            for name, cell_name in cells.items()
+        )
+    )
+    rewritten = tuple(
+        _rewrite_internal_definition_references(form, cells) for form in body
+    )
+    return (("hissp.macros.._macro_.let", bindings, *rewritten),)
 
 
 def syntax_rules_stable_identifiers(extra=()):
@@ -207,9 +445,9 @@ def _is_stable_identifier(value, stable_identifiers):
         return False
     if value in stable_identifiers:
         return True
-    if value.startswith(':'):
+    if value.startswith(":"):
         return True
-    if '..' in value:
+    if ".." in value:
         return True
     if _is_literal_string_form(value):
         return True
@@ -221,7 +459,7 @@ def _introduced_identifier(name, introduced):
     # expansion. Repeated occurrences of the same template identifier map to the
     # same generated name so local bindings and references still line up.
     if name not in introduced:
-        introduced[name] = f'_Qzsyntax_rules_{next(_gensym_counter)}_{name}'
+        introduced[name] = f"_Qzsyntax_rules_{next(_gensym_counter)}_{name}"
     return introduced[name]
 
 
@@ -283,7 +521,9 @@ def _match_sequence(pattern, form, literals, bindings):
     if not isinstance(form, tuple):
         raise MatchFailure
 
-    ellipsis_positions = [index for index, item in enumerate(pattern) if _is_ellipsis(item)]
+    ellipsis_positions = [
+        index for index, item in enumerate(pattern) if _is_ellipsis(item)
+    ]
     if not ellipsis_positions:
         if len(pattern) != len(form):
             raise MatchFailure
@@ -292,27 +532,27 @@ def _match_sequence(pattern, form, literals, bindings):
         return
 
     if len(ellipsis_positions) > 1:
-        raise SyntaxError('only one ellipsis per pattern level is supported')
+        raise SyntaxError("only one ellipsis per pattern level is supported")
 
     ellipsis_index = ellipsis_positions[0]
     if ellipsis_index == 0:
-        raise SyntaxError('ellipsis must follow a repeat pattern')
+        raise SyntaxError("ellipsis must follow a repeat pattern")
 
     repeat_pattern = pattern[ellipsis_index - 1]
-    prefix = pattern[:ellipsis_index - 1]
-    suffix = pattern[ellipsis_index + 1:]
+    prefix = pattern[: ellipsis_index - 1]
+    suffix = pattern[ellipsis_index + 1 :]
 
     if len(form) < len(prefix) + len(suffix):
         raise MatchFailure
 
-    for pattern_item, form_item in builtins.zip(prefix, form[:len(prefix)]):
+    for pattern_item, form_item in builtins.zip(prefix, form[: len(prefix)]):
         _match(pattern_item, form_item, literals, bindings)
 
     suffix_start = len(form) - len(suffix)
     for pattern_item, form_item in builtins.zip(suffix, form[suffix_start:]):
         _match(pattern_item, form_item, literals, bindings)
 
-    repeated_forms = form[len(prefix):suffix_start]
+    repeated_forms = form[len(prefix) : suffix_start]
     repeated_vars = _pattern_variables(repeat_pattern, literals)
     for name in repeated_vars:
         bindings.setdefault(name, [])
@@ -367,16 +607,18 @@ def _validate_template_ellipsis(template, bindings, depth=0):
             and isinstance(bindings[template], list)
             and depth == 0
         ):
-            raise SyntaxError(f'repeated variable {template!r} used outside ellipsis')
+            raise SyntaxError(f"repeated variable {template!r} used outside ellipsis")
         return
 
     index = 0
     while index < len(template):
         item = template[index]
         if _is_ellipsis(item):
-            raise SyntaxError('ellipsis must follow a template fragment')
+            raise SyntaxError("ellipsis must follow a template fragment")
 
-        followed_by_ellipsis = index + 1 < len(template) and _is_ellipsis(template[index + 1])
+        followed_by_ellipsis = index + 1 < len(template) and _is_ellipsis(
+            template[index + 1]
+        )
         repeated_vars = _template_repeated_variables(item, bindings)
 
         if (
@@ -385,10 +627,12 @@ def _validate_template_ellipsis(template, bindings, depth=0):
             and depth == 0
             and not isinstance(item, tuple)
         ):
-            names = ', '.join(sorted(repeated_vars))
-            raise SyntaxError(f'repeated template variable outside ellipsis: {names}')
+            names = ", ".join(sorted(repeated_vars))
+            raise SyntaxError(f"repeated template variable outside ellipsis: {names}")
 
-        _validate_template_ellipsis(item, bindings, depth + (1 if followed_by_ellipsis else 0))
+        _validate_template_ellipsis(
+            item, bindings, depth + (1 if followed_by_ellipsis else 0)
+        )
         index += 2 if followed_by_ellipsis else 1
 
 
@@ -398,7 +642,7 @@ def _binding_at_path(value, repeat_path):
     # `[[a, b], [c, d]]`. The path `(1, 0)` selects `c`.
     for index in repeat_path:
         if not isinstance(value, list):
-            raise SyntaxError('template has more ellipses than the pattern variable')
+            raise SyntaxError("template has more ellipses than the pattern variable")
         value = value[index]
     return value
 
@@ -407,7 +651,7 @@ def _repetition_length(value, repeat_path):
     # Return the number of iterations for the next ellipsis at this path.
     value = _binding_at_path(value, repeat_path)
     if not isinstance(value, list):
-        raise SyntaxError('template ellipsis has too many levels for pattern variable')
+        raise SyntaxError("template ellipsis has too many levels for pattern variable")
     return len(value)
 
 
@@ -420,13 +664,22 @@ def _repetition_count(template, bindings, repeat_path=()):
         if isinstance(bindings[name], list)
     }
     if not counts:
-        raise SyntaxError('template ellipsis has no repeated pattern variable')
+        raise SyntaxError("template ellipsis has no repeated pattern variable")
     if len(counts) != 1:
-        raise SyntaxError('template ellipsis variables have different repetition counts')
+        raise SyntaxError(
+            "template ellipsis variables have different repetition counts"
+        )
     return counts.pop()
 
 
-def _expand_atom(template, bindings, repeat_path, introduced, stable_identifiers, qualified_identifiers):
+def _expand_atom(
+    template,
+    bindings,
+    repeat_path,
+    introduced,
+    stable_identifiers,
+    qualified_identifiers,
+):
     # Replace a pattern variable with its matched form. Non-pattern symbols are
     # either stable global/core identifiers or introduced identifiers that must
     # be renamed to avoid accidental capture.
@@ -434,10 +687,14 @@ def _expand_atom(template, bindings, repeat_path, introduced, stable_identifiers
         value = bindings[template]
         if isinstance(value, list):
             if not repeat_path:
-                raise SyntaxError(f'repeated variable {template!r} used outside ellipsis')
+                raise SyntaxError(
+                    f"repeated variable {template!r} used outside ellipsis"
+                )
             value = _binding_at_path(value, repeat_path)
             if isinstance(value, list):
-                raise SyntaxError(f'repeated variable {template!r} needs another ellipsis')
+                raise SyntaxError(
+                    f"repeated variable {template!r} needs another ellipsis"
+                )
             return value
         return value
     if _is_symbol(template) and template in qualified_identifiers:
@@ -447,7 +704,14 @@ def _expand_atom(template, bindings, repeat_path, introduced, stable_identifiers
     return template
 
 
-def _expand_sequence(template, bindings, repeat_path, introduced, stable_identifiers, qualified_identifiers):
+def _expand_sequence(
+    template,
+    bindings,
+    repeat_path,
+    introduced,
+    stable_identifiers,
+    qualified_identifiers,
+):
     # Expand one template tuple, splicing repeated template fragments into the
     # surrounding tuple when followed by `...`.
     output = []
@@ -455,22 +719,47 @@ def _expand_sequence(template, bindings, repeat_path, introduced, stable_identif
     while index < len(template):
         item = template[index]
         if _is_ellipsis(item):
-            raise SyntaxError('ellipsis must follow a template fragment')
+            raise SyntaxError("ellipsis must follow a template fragment")
 
         if index + 1 < len(template) and _is_ellipsis(template[index + 1]):
             count = _repetition_count(item, bindings, repeat_path)
             for repeated_index in range(count):
-                output.append(_expand(item, bindings, repeat_path + (repeated_index,), introduced, stable_identifiers, qualified_identifiers))
+                output.append(
+                    _expand(
+                        item,
+                        bindings,
+                        repeat_path + (repeated_index,),
+                        introduced,
+                        stable_identifiers,
+                        qualified_identifiers,
+                    )
+                )
             index += 2
             continue
 
-        output.append(_expand(item, bindings, repeat_path, introduced, stable_identifiers, qualified_identifiers))
+        output.append(
+            _expand(
+                item,
+                bindings,
+                repeat_path,
+                introduced,
+                stable_identifiers,
+                qualified_identifiers,
+            )
+        )
         index += 1
 
     return tuple(output)
 
 
-def _expand(template, bindings, repeat_path=(), introduced=None, stable_identifiers=None, qualified_identifiers=None):
+def _expand(
+    template,
+    bindings,
+    repeat_path=(),
+    introduced=None,
+    stable_identifiers=None,
+    qualified_identifiers=None,
+):
     # Dispatch between atom and tuple template expansion.
     if introduced is None:
         introduced = {}
@@ -481,18 +770,34 @@ def _expand(template, bindings, repeat_path=(), introduced=None, stable_identifi
     if isinstance(template, tuple):
         if not repeat_path:
             _validate_template_ellipsis(template, bindings)
-        return _expand_sequence(template, bindings, repeat_path, introduced, stable_identifiers, qualified_identifiers)
-    return _expand_atom(template, bindings, repeat_path, introduced, stable_identifiers, qualified_identifiers)
+        return _expand_sequence(
+            template,
+            bindings,
+            repeat_path,
+            introduced,
+            stable_identifiers,
+            qualified_identifiers,
+        )
+    return _expand_atom(
+        template,
+        bindings,
+        repeat_path,
+        introduced,
+        stable_identifiers,
+        qualified_identifiers,
+    )
 
 
-def make_syntax_rules_transformer(name, literals, rules, stable_identifiers=None, qualified_identifiers=None):
+def make_syntax_rules_transformer(
+    name, literals, rules, stable_identifiers=None, qualified_identifiers=None
+):
     # Build a Hissp macro function implementing one syntax-rules transformer.
     #
     # Hissp macro functions receive only the call arguments, not the operator
     # itself. Scheme syntax-rules patterns include the keyword in the first
     # position, so we reconstruct `(name . args)` before matching.
     if not isinstance(literals, tuple):
-        raise SyntaxError('syntax-rules literals must be a list')
+        raise SyntaxError("syntax-rules literals must be a list")
 
     stable_identifiers = syntax_rules_stable_identifiers(stable_identifiers or ())
     qualified_identifiers = qualified_identifiers or {}
@@ -500,11 +805,11 @@ def make_syntax_rules_transformer(name, literals, rules, stable_identifiers=None
     literal_set.add(name)
 
     if not rules:
-        raise SyntaxError('syntax-rules requires at least one rule')
+        raise SyntaxError("syntax-rules requires at least one rule")
 
     for rule in rules:
         if not isinstance(rule, tuple) or len(rule) != 2:
-            raise SyntaxError('each syntax-rules clause must be (pattern template)')
+            raise SyntaxError("each syntax-rules clause must be (pattern template)")
 
     def transformer(*args):
         form = (name, *args)
@@ -520,7 +825,7 @@ def make_syntax_rules_transformer(name, literals, rules, stable_identifiers=None
                 stable_identifiers=stable_identifiers,
                 qualified_identifiers=qualified_identifiers,
             )
-        raise SyntaxError(f'no syntax-rules pattern matched for {name}')
+        raise SyntaxError(f"no syntax-rules pattern matched for {name}")
 
     transformer.__name__ = str(name)
     return transformer
@@ -532,11 +837,11 @@ def _syntax_rules_form_parts(transformer_form):
     if (
         not isinstance(transformer_form, tuple)
         or not transformer_form
-        or transformer_form[0] != 'syntaxQzH_rules'
+        or transformer_form[0] != "syntaxQzH_rules"
     ):
-        raise SyntaxError('expected a syntax-rules transformer')
+        raise SyntaxError("expected a syntax-rules transformer")
     if len(transformer_form) < 3:
-        raise SyntaxError('syntax-rules requires literals and at least one rule')
+        raise SyntaxError("syntax-rules requires literals and at least one rule")
     return transformer_form[1], transformer_form[2:]
 
 
@@ -548,16 +853,18 @@ def _syntax_case_transformer(name, transformer_form, env):
     # they must compute target Hissp forms from identifiers, such as SRFI-177's
     # keyword-argument conversion.
     if len(transformer_form) != 2 or not isinstance(transformer_form[1], str):
-        raise SyntaxError('syntax-case currently expects one transformer procedure name')
+        raise SyntaxError(
+            "syntax-case currently expects one transformer procedure name"
+        )
     if env is None:
-        raise SyntaxError('syntax-case transformers require a definition environment')
+        raise SyntaxError("syntax-case transformers require a definition environment")
     procedure_name = transformer_form[1]
     try:
         procedure = env[procedure_name]
     except KeyError:
-        raise NameError(f'unbound syntax-case transformer: {procedure_name}') from None
+        raise NameError(f"unbound syntax-case transformer: {procedure_name}") from None
     if not callable(procedure):
-        raise TypeError(f'syntax-case transformer is not callable: {procedure_name}')
+        raise TypeError(f"syntax-case transformer is not callable: {procedure_name}")
 
     def transformer(*args):
         return procedure(*args)
@@ -566,12 +873,14 @@ def _syntax_case_transformer(name, transformer_form, env):
     return transformer
 
 
-def make_transformer_from_form(name, transformer_form, stable_identifiers=None, env=None):
+def make_transformer_from_form(
+    name, transformer_form, stable_identifiers=None, env=None
+):
     # Shared constructor for `define-syntax` and `let-syntax`.
     if (
         isinstance(transformer_form, tuple)
         and transformer_form
-        and transformer_form[0] == 'syntaxQzH_case'
+        and transformer_form[0] == "syntaxQzH_case"
     ):
         return _syntax_case_transformer(name, transformer_form, env)
 
@@ -583,21 +892,23 @@ def make_transformer_from_form(name, transformer_form, stable_identifiers=None, 
         # to its helper procedures (`test-begin`, `test-end`, etc.) without
         # treating them as caller-local identifiers to be gensymed.
         stable_identifiers = set(stable_identifiers or ()).union(env.keys())
-        module_name = env.get('__name__')
-        if isinstance(module_name, str) and module_name != '__main__':
+        module_name = env.get("__name__")
+        if isinstance(module_name, str) and module_name != "__main__":
             qualified_identifiers = {
-                symbol: f'{module_name}..{symbol}'
+                symbol: f"{module_name}..{symbol}"
                 for symbol in env
                 if (
                     isinstance(symbol, str)
                     and symbol not in DEFAULT_STABLE_IDENTIFIERS
-                    and not symbol.startswith('__')
-                    and symbol not in {'_macro_'}
+                    and not symbol.startswith("__")
+                    and symbol not in {"_macro_"}
                 )
             }
 
     literals, rules = _syntax_rules_form_parts(transformer_form)
-    return make_syntax_rules_transformer(name, literals, rules, stable_identifiers, qualified_identifiers)
+    return make_syntax_rules_transformer(
+        name, literals, rules, stable_identifiers, qualified_identifiers
+    )
 
 
 def _expand_local_macros(form, local_macros):
@@ -608,7 +919,7 @@ def _expand_local_macros(form, local_macros):
         return form
 
     operator = form[0]
-    if operator == 'quote':
+    if operator == "quote":
         return form
 
     if isinstance(operator, str) and operator in local_macros:
@@ -625,25 +936,31 @@ def _local_macro_table(bindings, stable_identifiers, procedure):
     # before body expansion. The completed table is what gives
     # `letrec-syntax`-style transformers mutual visibility.
     if not isinstance(bindings, tuple):
-        raise SyntaxError(f'{procedure} bindings must be a list')
+        raise SyntaxError(f"{procedure} bindings must be a list")
 
     local_names = {
         binding[0]
         for binding in bindings
-        if isinstance(binding, tuple) and len(binding) == 2 and isinstance(binding[0], str)
+        if isinstance(binding, tuple)
+        and len(binding) == 2
+        and isinstance(binding[0], str)
     }
-    stable_identifiers = syntax_rules_stable_identifiers(stable_identifiers).union(local_names)
+    stable_identifiers = syntax_rules_stable_identifiers(stable_identifiers).union(
+        local_names
+    )
 
     local_macros = {}
     for binding in bindings:
         if not isinstance(binding, tuple) or len(binding) != 2:
-            raise SyntaxError(f'{procedure} bindings must be (name transformer) pairs')
+            raise SyntaxError(f"{procedure} bindings must be (name transformer) pairs")
         name, transformer_form = binding
         if not isinstance(name, str):
-            raise SyntaxError(f'{procedure} binding names must be symbols')
+            raise SyntaxError(f"{procedure} binding names must be symbols")
         if name in local_macros:
-            raise SyntaxError(f'duplicate {procedure} binding: {name}')
-        local_macros[name] = make_transformer_from_form(name, transformer_form, stable_identifiers)
+            raise SyntaxError(f"duplicate {procedure} binding: {name}")
+        local_macros[name] = make_transformer_from_form(
+            name, transformer_form, stable_identifiers
+        )
     return local_macros
 
 
@@ -651,8 +968,10 @@ def _expand_local_syntax(procedure, bindings, body, stable_identifiers=None):
     stable_identifiers = syntax_rules_stable_identifiers(stable_identifiers or ())
     local_macros = _local_macro_table(bindings, stable_identifiers, procedure)
 
-    return ('hissp.macros.._macro_.progn',
-            *(_expand_local_macros(form, local_macros) for form in body))
+    return (
+        "hissp.macros.._macro_.progn",
+        *(_expand_local_macros(form, local_macros) for form in body),
+    )
 
 
 def _internal_syntax_table(forms, stable_identifiers):
@@ -664,7 +983,7 @@ def _internal_syntax_table(forms, stable_identifiers):
     # expectation for Scheme body-local macros without mutating Hissp's global
     # macro namespace.
     bindings = tuple((form[1], form[2]) for form in forms)
-    return _local_macro_table(bindings, stable_identifiers, 'internal define-syntax')
+    return _local_macro_table(bindings, stable_identifiers, "internal define-syntax")
 
 
 def _split_internal_syntax_definitions(body):
@@ -683,7 +1002,9 @@ def _split_internal_syntax_definitions(body):
 
         scanning_definitions = False
         if _is_define_syntax_form(form):
-            raise SyntaxError('internal define-syntax must appear before body expressions')
+            raise SyntaxError(
+                "internal define-syntax must appear before body expressions"
+            )
         body_forms.append(form)
 
     return tuple(syntax_forms), tuple(body_forms)
@@ -701,7 +1022,7 @@ def _split_internal_runtime_definitions(body):
 
         scanning_definitions = False
         if _is_define_form(form):
-            raise SyntaxError('internal define must appear before body expressions')
+            raise SyntaxError("internal define must appear before body expressions")
         body_forms.append(form)
 
     return tuple(definition_forms), tuple(body_forms)
@@ -714,25 +1035,30 @@ def _expand_internal_runtime_definitions(body):
 
     names = tuple(_definition_name(form) for form in definition_forms)
     if len(set(names)) != len(names):
-        raise SyntaxError('duplicate internal define name')
+        raise SyntaxError("duplicate internal define name")
 
-    cells = {name: f'_Qzinternal_define_cell_{next(_gensym_counter)}_{name}' for name in names}
+    cells = {name: _new_cell_name(name) for name in names}
     cell_names = tuple(cells.values())
-    cell_values = tuple(('hissp_scheme.macro.syntax_rules..cell', 'QzHASH_f') for _ in cell_names)
-    bindings = tuple(itertools.chain.from_iterable(builtins.zip(cell_names, cell_values)))
+    cell_values = tuple(
+        ("hissp_scheme.macro.syntax_rules..cell", "QzHASH_f") for _ in cell_names
+    )
+    bindings = tuple(
+        itertools.chain.from_iterable(builtins.zip(cell_names, cell_values))
+    )
     initializers = tuple(
         (
-            'hissp_scheme.macro.syntax_rules..cell_set',
+            "hissp_scheme.macro.syntax_rules..cell_set",
             cells[name],
-            _rewrite_internal_definition_references(_definition_value_form(form), cells),
+            _rewrite_internal_definition_references(
+                _definition_value_form(form), cells
+            ),
         )
         for name, form in builtins.zip(names, definition_forms)
     )
     rewritten_body = tuple(
-        _rewrite_internal_definition_references(form, cells)
-        for form in body_forms
+        _rewrite_internal_definition_references(form, cells) for form in body_forms
     )
-    return (('hissp.macros.._macro_.let', bindings, *initializers, *rewritten_body),)
+    return (("hissp.macros.._macro_.let", bindings, *initializers, *rewritten_body),)
 
 
 def expand_body_definitions(body, stable_identifiers=None):
@@ -748,7 +1074,9 @@ def expand_body_definitions(body, stable_identifiers=None):
         return _expand_internal_runtime_definitions(body_forms)
 
     local_macros = _internal_syntax_table(syntax_forms, stable_identifiers)
-    expanded_body = tuple(_expand_local_macros(form, local_macros) for form in body_forms)
+    expanded_body = tuple(
+        _expand_local_macros(form, local_macros) for form in body_forms
+    )
     return _expand_internal_runtime_definitions(expanded_body)
 
 
@@ -759,7 +1087,7 @@ def expand_let_syntax(bindings, body, stable_identifiers=None):
     # initializers are syntax-rules data, so there is no runtime initializer
     # scope distinction from `letrec-syntax`; body expansion gets the completed
     # local table.
-    return _expand_local_syntax('let-syntax', bindings, body, stable_identifiers)
+    return _expand_local_syntax("let-syntax", bindings, body, stable_identifiers)
 
 
 def expand_letrec_syntax(bindings, body, stable_identifiers=None):
@@ -769,4 +1097,4 @@ def expand_letrec_syntax(bindings, body, stable_identifiers=None):
     # This is the R7RS distinction users care about for recursive/local macro
     # references. Full phase-aware transformer initialization is still outside
     # this subset.
-    return _expand_local_syntax('letrec-syntax', bindings, body, stable_identifiers)
+    return _expand_local_syntax("letrec-syntax", bindings, body, stable_identifiers)

@@ -81,7 +81,8 @@ def dict_values(dictionary):
 
 def dict_items(dictionary):
     return py_to_list(
-        cons(key, value) for key, value in _require_dict(dictionary, "dict-items").items()
+        cons(key, value)
+        for key, value in _require_dict(dictionary, "dict-items").items()
     )
 
 

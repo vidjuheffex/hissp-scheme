@@ -200,7 +200,9 @@ def hash_table_fold(hash_table, function, init_value):
 def hash_table_keys(hash_table):
     return py_to_list(
         key
-        for key, _ in _require_hash_table(hash_table, "hash-table-keys")._entries.values()
+        for key, _ in _require_hash_table(
+            hash_table, "hash-table-keys"
+        )._entries.values()
     )
 
 
@@ -241,7 +243,9 @@ def hash_table_merge_bang(hash_table1, hash_table2):
     return hash_table1
 
 
-def alist_to_hash_table(alist, equivalence_function=operator.eq, hash_function=hash_value):
+def alist_to_hash_table(
+    alist, equivalence_function=operator.eq, hash_function=hash_value
+):
     result = make_hash_table(equivalence_function, hash_function)
     for association in list_to_py(alist)[0]:
         key = car(association)

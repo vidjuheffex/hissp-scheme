@@ -17,11 +17,11 @@ from typing import Any, Callable
 
 import hissp
 
+from hissp_scheme.runtime import control_runtime
 
 _UNSPECIFIED = object()
 _thread_ids = itertools.count(1)
 _thread_local = threading.local()
-_handler_local = threading.local()
 
 
 class JoinTimeoutException(Exception):
@@ -44,12 +44,9 @@ class UncaughtException(Exception):
         self.reason = reason
 
 
-class SchemeRaised(Exception):
-    """Internal exception used by the default SRFI-18 exception handler."""
-
-    def __init__(self, reason):
-        super().__init__(reason)
-        self.reason = reason
+# Raising a non-exception object with no handler installed produces this; it
+# is the same carrier `(scheme base)` uses, so both libraries share one model.
+SchemeRaised = control_runtime.SchemeRaise
 
 
 @dataclass(frozen=True)
@@ -71,7 +68,7 @@ class SchemeThread:
         self.state = "new"
         self.identifier = next(_thread_ids)
         self._done = threading.Condition()
-        self._handler = current_exception_handler()
+        self._handlers = control_runtime.current_handlers()
         self._thread = threading.Thread(
             target=self._run,
             name=None if name is _UNSPECIFIED else str(name),
@@ -80,7 +77,7 @@ class SchemeThread:
 
     def _run(self):
         _thread_local.current = self
-        _handler_local.handler = self._handler
+        control_runtime.install_handlers(self._handlers)
         with self._done:
             self.state = "running"
             self._done.notify_all()
@@ -139,25 +136,12 @@ def _symbol(name: str) -> str:
     return hissp.munge(name)
 
 
-def _default_exception_handler(obj):
-    raise SchemeRaised(obj)
+current_exception_handler = control_runtime.current_exception_handler
+with_exception_handler = control_runtime.with_exception_handler
 
-
-def current_exception_handler():
-    return getattr(_handler_local, "handler", _default_exception_handler)
-
-
-def with_exception_handler(handler, thunk):
-    previous = current_exception_handler()
-    _handler_local.handler = handler
-    try:
-        return thunk()
-    finally:
-        _handler_local.handler = previous
-
-
-def raise_(obj):
-    return current_exception_handler()(obj)
+# SRFI-18 `raise` returns whatever the handler returns, which is R7RS
+# `raise-continuable` behavior.
+raise_ = control_runtime.raise_continuable
 
 
 def current_thread():

@@ -171,7 +171,9 @@ def _scheme_quasiquote(form, *, in_list=False):
         tail = _scheme_quasiquote(form[-1])
         items = form[:-2]
     elif "." in form:
-        raise SyntaxError("dot may only appear before the final tail in quasiquoted lists")
+        raise SyntaxError(
+            "dot may only appear before the final tail in quasiquoted lists"
+        )
     else:
         tail = ()
         items = form

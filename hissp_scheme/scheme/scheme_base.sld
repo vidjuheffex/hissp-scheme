@@ -23,46 +23,44 @@ scheme_bootstrap..prelude#:
   ;; Full Scheme `define`.
   ;;
   ;; Bootstrap provides basic value/function define. Base upgrades the
-  ;; function-body case so libraries can start bodies with internal
-  ;; `define-syntax` forms.
+  ;; function case: bodies may start with internal `define-syntax` forms, and
+  ;; the result is a tail-call-driving procedure (see `hissp_scheme.macro.tail`).
   (if-else (isinstance head tuple)
     (progn
       (unless head
         (throw (SyntaxError "function-style define requires a name")))
-      (hissp.macros.._macro_.let
-        (expanded (scheme_base..expandQzH_bodyQzH_definitions
-                    body
-                    (scheme_base..syntaxQzH_rulesQzH_stableQzH_identifiers)))
-        (tuple
-          (chain
-            (@ 'hissp.macros.._macro_.defun
+      (tuple
+        (@ 'hissp.macros.._macro_.define
+           (op#getitem head 0)
+           (hissp_scheme.macro.tail..procedure_form
              (op#getitem head 0)
-             (hissp_scheme.runtime.scheme_bootstrap_runtime..schemeQzH_formals
-               (tuple (op#getitem head (slice 1 None)))))
-            (hissp_scheme.runtime.scheme_bootstrap_runtime..schemeQzH_body
-              (tuple (op#getitem head (slice 1 None)))
-              expanded)))))
+             (tuple (op#getitem head (slice 1 None)))
+             body))))
     (progn
       (unless (= (len body) 1)
         (throw (SyntaxError "value-style define requires exactly one value")))
       (tuple (@ 'hissp.macros.._macro_.define head (op#getitem body 0))))))
 
 (defmacro scheme-lambda (formals .#"*body")
-  ;; Full Scheme lambda with internal syntax-definition expansion.
+  ;; Full Scheme lambda with internal syntax-definition expansion and proper
+  ;; tail calls.
   ;;
   ;; The reader rewrites user source `(lambda ...)` to this non-keyword macro
   ;; name in files using `scheme base`, preventing
   ;; Python's own lambda syntax from bypassing the Scheme body expander.
+  (hissp_scheme.macro.tail..procedure_form None formals body))
+
+(defmacro set! (target value)
+  ;; Scheme assignment. Locals that are `set!` somewhere in their scope live in
+  ;; cells (see `box_assigned_locals`), and `set!` forms written directly in
+  ;; that scope are rewritten before this macro runs. A macro can still hand
+  ;; this form an already-rewritten cell reference as `target`, so handle that
+  ;; here too. Everything else is a module-level variable.
   (hissp.macros.._macro_.let
-    (expanded (scheme_base..expandQzH_bodyQzH_definitions
-                body
-                (scheme_base..syntaxQzH_rulesQzH_stableQzH_identifiers)))
-    (tuple
-      (chain
-        (@ 'hissp.macros.._macro_.fun
-           'lambda
-           (hissp_scheme.runtime.scheme_bootstrap_runtime..schemeQzH_formals formals))
-        (hissp_scheme.runtime.scheme_bootstrap_runtime..schemeQzH_body formals expanded)))))
+    (cell (hissp_scheme.macro.syntax_rules..cell_name_from_ref_form target))
+    (if-else cell
+      (tuple (@ 'hissp_scheme.macro.syntax_rules..cell_set cell value))
+      (tuple (@ 'hissp.macros.._macro_.setQzAT_ target value)))))
 
 (defmacro begin (.#"*body")
   ;; Scheme sequencing with support for an internal syntax-definition prefix.
@@ -76,16 +74,36 @@ scheme_bootstrap..prelude#:
         expanded))))
 
 (defmacro let (bindings .#"*body")
-  ;; Scheme-shaped local binding form with internal syntax-definition support.
-  (hissp.macros.._macro_.let
-    (expanded (scheme_base..expandQzH_bodyQzH_definitions
-                body
-                (scheme_base..syntaxQzH_rulesQzH_stableQzH_identifiers)))
+  ;; Scheme `let` and named `let`, with internal syntax-definition support.
+  (if-else (isinstance bindings str)
+    (progn
+      (unless body
+        (throw (SyntaxError "named let requires bindings")))
+      (hissp_scheme.macro.tail..named_let_form
+        bindings
+        (op#getitem body 0)
+        (op#getitem body (slice 1 None))))
     (tuple
       (chain
         (@ 'hissp.macros.._macro_.let
            (scheme_bootstrap..flattenQzH_letQzH_bindings bindings))
-        expanded))))
+        (hissp_scheme.macro.tail..let_body bindings body)))))
+
+(defmacro let* (bindings .#"*body")
+  ;; Sequential `let`: each init sees the bindings before it.
+  (hissp_scheme.macro.tail..let_star_form bindings body))
+
+(defmacro letrec (bindings .#"*body")
+  ;; Recursive bindings, implemented through internal `define`.
+  (hissp_scheme.macro.tail..letrec_form bindings body "letrec"))
+
+(defmacro letrec* (bindings .#"*body")
+  ;; Like `letrec`, with inits evaluated left to right.
+  (hissp_scheme.macro.tail..letrec_form bindings body "letrec*"))
+
+(defmacro do (specs exit-clause .#"*commands")
+  ;; R7RS `do` loop, expanded into a named `let`.
+  (hissp_scheme.macro.tail..do_form specs exit-clause commands))
 
 (defmacro define-syntax (name transformer)
   ;; Define a Scheme-style macro transformer.
@@ -246,6 +264,45 @@ scheme_bootstrap..prelude#:
   ;; quote handling conservative.
   (syntax-case case-transformer))
 
+;; ---------------------------------------------------------------------------
+;; Control: continuations, multiple values, exceptions, parameters
+;; ---------------------------------------------------------------------------
+;; Implemented in `hissp_scheme/runtime/control_runtime.py`. `call/cc` is
+;; escape-only: invoking a continuation after its `call/cc` returned raises
+;; `ContinuationError`.
+
+(define procedure? hissp_scheme.runtime.control_runtime..procedure_q)
+(define apply hissp_scheme.runtime.control_runtime..apply)
+(define call-with-current-continuation hissp_scheme.runtime.control_runtime..call_cc)
+(define call/cc hissp_scheme.runtime.control_runtime..call_cc)
+(define dynamic-wind hissp_scheme.runtime.control_runtime..dynamic_wind)
+(define values hissp_scheme.runtime.control_runtime..values)
+(define call-with-values hissp_scheme.runtime.control_runtime..call_with_values)
+(define raise-continuable hissp_scheme.runtime.control_runtime..raise_continuable)
+(define with-exception-handler hissp_scheme.runtime.control_runtime..with_exception_handler)
+(define error hissp_scheme.runtime.control_runtime..error)
+(define error-object? hissp_scheme.runtime.control_runtime..error_object_q)
+(define error-object-message hissp_scheme.runtime.control_runtime..error_object_message)
+(define error-object-irritants hissp_scheme.runtime.control_runtime..error_object_irritants)
+(define file-error? hissp_scheme.runtime.control_runtime..file_error_q)
+(define read-error? hissp_scheme.runtime.control_runtime..read_error_q)
+(define make-parameter hissp_scheme.runtime.control_runtime..make_parameter)
+
+;; `raise` is a Python keyword, so it can't be an ordinary global binding.
+(define raise-transformer hissp_scheme.macro.tail..raise_form)
+(define-syntax raise
+  (syntax-case raise-transformer))
+
+(define guard-transformer hissp_scheme.macro.tail..guard_form)
+(define-syntax guard
+  ;; (guard (var clause ...) body ...) with `cond`-style clauses. When no
+  ;; clause matches, the object is re-raised to the outer handlers.
+  (syntax-case guard-transformer))
+
+(define parameterize-transformer hissp_scheme.macro.tail..parameterize_form)
+(define-syntax parameterize
+  (syntax-case parameterize-transformer))
+
 (hissp_scheme.runtime.scheme_bootstrap_runtime..install-library-exports
   (builtins..globals)
   '(+
@@ -263,6 +320,10 @@ scheme_bootstrap..prelude#:
     begin
     if
     let
+    let*
+    letrec
+    letrec*
+    do
     set!
     define-syntax
     let-syntax
@@ -273,6 +334,25 @@ scheme_bootstrap..prelude#:
     unless
     cond
     case
+    procedure?
+    apply
+    call-with-current-continuation
+    call/cc
+    dynamic-wind
+    values
+    call-with-values
+    raise
+    raise-continuable
+    with-exception-handler
+    guard
+    error
+    error-object?
+    error-object-message
+    error-object-irritants
+    file-error?
+    read-error?
+    make-parameter
+    parameterize
     cons
     list
     eq?

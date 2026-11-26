@@ -31,6 +31,7 @@ TEST_FILES = (
     TEST_DIR / "test_srfi177.scm",
     TEST_DIR / "test_syntax_rules.scm",
     TEST_DIR / "test_reader.scm",
+    TEST_DIR / "test_control.scm",
 )
 
 COMPILE_ERROR_CASES = (
@@ -48,7 +49,7 @@ COMPILE_ERROR_CASES = (
         "(define-library (scheme test-include-ci)\n"
         "  (export value)\n"
         "  (import (scheme base))\n"
-        "  (include-ci \"helpers.scm\")\n"
+        '  (include-ci "helpers.scm")\n'
         "  (begin (define value 1)))\n",
         SyntaxError,
         "include-ci",
@@ -157,7 +158,7 @@ def main() -> int:
     _compile(
         reader,
         '(import (scheme base) (srfi 64))\n(test-begin "scheme")\n',
-        TEST_DIR / "<begin>.scm"
+        TEST_DIR / "<begin>.scm",
     )
 
     for test_file in TEST_FILES:

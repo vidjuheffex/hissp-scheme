@@ -147,8 +147,16 @@ def _scheme_import_plan(spec):
     if operator == "except":
         excluded = {hissp.munge(_scheme_source_name(name)) for name in spec[2:]}
         return (
-            {name: value for name, value in value_exports.items() if name not in excluded},
-            {name: value for name, value in macro_exports.items() if name not in excluded},
+            {
+                name: value
+                for name, value in value_exports.items()
+                if name not in excluded
+            },
+            {
+                name: value
+                for name, value in macro_exports.items()
+                if name not in excluded
+            },
         )
 
     if operator == "rename":
@@ -308,7 +316,9 @@ def library_form(env, name, clauses):
             for export in body:
                 internal_source, external_source = _scheme_export_spec(export)
                 if external_source in seen_exports:
-                    raise SyntaxError(f"duplicate define-library export: {external_source}")
+                    raise SyntaxError(
+                        f"duplicate define-library export: {external_source}"
+                    )
                 seen_exports.add(external_source)
                 exports.append(export)
         elif operator == "import":
@@ -332,7 +342,9 @@ def library_form(env, name, clauses):
         elif operator == "cond-expand":
             raise SyntaxError("define-library cond-expand is not implemented yet")
         else:
-            raise SyntaxError(f"unsupported define-library clause: {hissp.demunge(operator)}")
+            raise SyntaxError(
+                f"unsupported define-library clause: {hissp.demunge(operator)}"
+            )
 
     return (
         "hissp.macros.._macro_.progn",

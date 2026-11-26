@@ -76,6 +76,11 @@ normal Python for editor support and direct testing.
 rest of the language: R7RS-style `syntax-rules` plus a small `syntax-case`
 procedural transformer hook for macros that must compute target forms.
 
+`hissp_scheme/macro/tail.py` builds Scheme procedures and marks tail
+positions. `hissp_scheme/runtime/control_runtime.py` holds the matching
+runtime: the tail-call trampoline, escape continuations, `dynamic-wind`, the
+exception-handler stack, multiple values, and parameter objects.
+
 `hissp_scheme/scheme/scheme_pairs.sld` owns the core `Pair` runtime,
 fundamental list procedures, and the Python-list-backed vector substrate used
 by `(scheme base)`.
@@ -187,8 +192,23 @@ Implemented or usable:
 - `(scheme python)` provides Python interop helpers such as `dict->hash-table`,
   `hash-table->dict`, `tuple->list`, `list->tuple`, `dict-ref`, `dict-set!`,
   `attribute-ref`, and `attribute-set!`.
-- Base syntax: `define`, `lambda`, `begin`, `if`, `let`, `set!`, `and`, `or`,
-  `when`, `unless`, `cond`, and `case`.
+- Base syntax: `define`, `lambda`, `begin`, `if`, `let`, named `let`, `let*`,
+  `letrec`, `letrec*`, `do`, `set!`, `and`, `or`, `when`, `unless`, `cond`,
+  and `case`. `set!` on a local variable rebinds that local; internal
+  `define` stays local to its body.
+- Proper tail calls: a call in tail position of a procedure body (including
+  the last form of `if`, `begin`, `let`-family bodies, `cond`, `case`, `and`,
+  `or`, `when`, `unless`, and `do`) doesn't grow the Python stack. Self, mutual,
+  and higher-order tail calls all run in constant stack space.
+- Control: `call/cc` and `call-with-current-continuation` (escape-only, see
+  below), `dynamic-wind`, `values`, `call-with-values`, `apply`, and
+  `procedure?`.
+- Exceptions: `raise`, `raise-continuable`, `with-exception-handler`, `guard`,
+  `error`, `error-object?`, `error-object-message`, `error-object-irritants`,
+  `file-error?`, and `read-error?`. Python exceptions raised by primitives
+  (for example the `TypeError` from `(car 1)`) are delivered to Scheme handlers
+  and `guard` clauses like any raised object.
+- Parameters: `make-parameter` and `parameterize`.
 - Macro system: `define-syntax`, `syntax-rules`, `let-syntax`,
   `letrec-syntax`, and the internal `syntax-case` hook used for procedural
   transformers.
@@ -209,3 +229,25 @@ Partial or intentionally explicit errors:
   and fails explicitly.
 - `include-ci`, `include-library-declarations`, and `cond-expand` currently
   raise explicit errors.
+- `call/cc` is escape-only. A continuation works while its `call/cc` is still
+  running (early exit, breaking out of loops, non-local return). Invoking it
+  after that `call/cc` has returned, or from another thread, raises
+  `ContinuationError`. Generators and coroutines built on re-entering
+  continuations aren't supported.
+- The procedure passed to `call/cc` isn't called in tail position, because the
+  frame that catches the escape has to stay live.
+- Non-tail recursion still uses the Python stack, at a few Python frames per
+  Scheme call. Importing the runtime raises Python's recursion limit to
+  100,000, which allows non-tail recursion roughly 20,000 calls deep.
+- Tail calls that pass Python keyword arguments (for example through SRFI-177
+  `call/kw`) run as ordinary Python calls.
+- Local `set!` is detected from `set!` forms written in the variable's scope.
+  A macro that expands into `set!` of a caller's local variable isn't detected,
+  and assigns a module-level variable instead.
+- Scheme procedures are Python functions that run a small trampoline. Expect
+  call-heavy non-tail code (such as naive `fib`) to run roughly 1.5x slower
+  than plain Python lambdas would.
+- Python keywords such as `return` can't be used as variable names.
+- SRFI-18 `raise` keeps SRFI-18's behavior of returning the handler's value,
+  but it shares the handler stack with `(scheme base)`, so either library's
+  handlers see the other's raises.
