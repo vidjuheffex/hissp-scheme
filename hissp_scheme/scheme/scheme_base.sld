@@ -86,11 +86,7 @@ scheme_bootstrap..prelude#:
         bindings
         (op#getitem body 0)
         (op#getitem body (slice 1 None))))
-    (tuple
-      (chain
-        (@ 'hissp.macros.._macro_.let
-           (scheme_bootstrap..flattenQzH_letQzH_bindings bindings))
-        (hissp_scheme.macro.tail..let_body bindings body)))))
+    (hissp_scheme.macro.tail..let_form bindings body)))
 
 (defmacro let* (bindings .#"*body")
   ;; Sequential `let`: each init sees the bindings before it.
@@ -303,18 +299,9 @@ scheme_bootstrap..prelude#:
 (define <= hissp_scheme.runtime.base_runtime..num_le)
 (define >= hissp_scheme.runtime.base_runtime..num_ge)
 
-;; Two-argument calls of the procedures above compile to Python operators; see
-;; `hissp_scheme/macro/primitives.py`. Each name is exported as both the
-;; procedure and the macro. The `_Qzprim_` helpers are what the macros call
-;; for operands that can't be inlined.
-(define _Qzprim_add operator..add)
-(define _Qzprim_sub operator..sub)
-(define _Qzprim_mul operator..mul)
-(define _Qzprim_eq operator..eq)
-(define _Qzprim_lt operator..lt)
-(define _Qzprim_gt operator..gt)
-(define _Qzprim_le operator..le)
-(define _Qzprim_ge operator..ge)
+;; Two-argument calls of the procedures above, and `vector-ref`/`vector-set!`
+;; calls, compile to Python expressions; see `hissp_scheme/macro/primitives.py`.
+;; Each name is exported as both the procedure and the macro.
 (builtins..setattr _macro_ 'QzPLUS_ hissp_scheme.macro.primitives.._macro_.QzPLUS_)
 (builtins..setattr _macro_ 'QzH_ hissp_scheme.macro.primitives.._macro_.QzH_)
 (builtins..setattr _macro_ 'QzSTAR_ hissp_scheme.macro.primitives.._macro_.QzSTAR_)
@@ -323,6 +310,8 @@ scheme_bootstrap..prelude#:
 (builtins..setattr _macro_ 'QzGT_ hissp_scheme.macro.primitives.._macro_.QzGT_)
 (builtins..setattr _macro_ 'QzLT_QzEQ_ hissp_scheme.macro.primitives.._macro_.QzLT_QzEQ_)
 (builtins..setattr _macro_ 'QzGT_QzEQ_ hissp_scheme.macro.primitives.._macro_.QzGT_QzEQ_)
+(builtins..setattr _macro_ 'vectorQzH_ref hissp_scheme.macro.primitives.._macro_.vectorQzH_ref)
+(builtins..setattr _macro_ 'vectorQzH_setQzBANG_ hissp_scheme.macro.primitives.._macro_.vectorQzH_setQzBANG_)
 (define number? hissp_scheme.runtime.base_runtime..number_q)
 (define complex? hissp_scheme.runtime.base_runtime..complex_q)
 (define real? hissp_scheme.runtime.base_runtime..real_q)
@@ -385,7 +374,45 @@ scheme_bootstrap..prelude#:
 (define map hissp_scheme.runtime.base_runtime..map_)
 (define for-each hissp_scheme.runtime.base_runtime..for_each)
 (define vector-map hissp_scheme.runtime.base_runtime..vector_map)
+(define newline hissp_scheme.runtime.base_runtime..newline)
 (define vector-for-each hissp_scheme.runtime.base_runtime..vector_for_each)
+
+;; ---------------------------------------------------------------------------
+;; Strings and characters
+;; ---------------------------------------------------------------------------
+;; Implemented in `hissp_scheme/runtime/string_runtime.py`. Characters are
+;; one-character strings.
+
+(define string? hissp_scheme.runtime.string_runtime..string_q)
+(define make-string hissp_scheme.runtime.string_runtime..make_string)
+(define string hissp_scheme.runtime.string_runtime..string)
+(define string-length hissp_scheme.runtime.string_runtime..string_length)
+(define string-ref hissp_scheme.runtime.string_runtime..string_ref)
+(define string-set! hissp_scheme.runtime.string_runtime..string_set_bang)
+(define string=? hissp_scheme.runtime.string_runtime..string_eq_q)
+(define string<? hissp_scheme.runtime.string_runtime..string_lt_q)
+(define string>? hissp_scheme.runtime.string_runtime..string_gt_q)
+(define string<=? hissp_scheme.runtime.string_runtime..string_le_q)
+(define string>=? hissp_scheme.runtime.string_runtime..string_ge_q)
+(define substring hissp_scheme.runtime.string_runtime..substring)
+(define string-append hissp_scheme.runtime.string_runtime..string_append)
+(define string->list hissp_scheme.runtime.string_runtime..string_to_list)
+(define list->string hissp_scheme.runtime.string_runtime..list_to_string)
+(define string-copy hissp_scheme.runtime.string_runtime..string_copy)
+(define string-copy! hissp_scheme.runtime.string_runtime..string_copy_bang)
+(define string-fill! hissp_scheme.runtime.string_runtime..string_fill_bang)
+(define string->vector hissp_scheme.runtime.string_runtime..string_to_vector)
+(define vector->string hissp_scheme.runtime.string_runtime..vector_to_string)
+(define string-map hissp_scheme.runtime.string_runtime..string_map)
+(define string-for-each hissp_scheme.runtime.string_runtime..string_for_each)
+(define char? hissp_scheme.runtime.string_runtime..char_q)
+(define char=? hissp_scheme.runtime.string_runtime..char_eq_q)
+(define char<? hissp_scheme.runtime.string_runtime..char_lt_q)
+(define char>? hissp_scheme.runtime.string_runtime..char_gt_q)
+(define char<=? hissp_scheme.runtime.string_runtime..char_le_q)
+(define char>=? hissp_scheme.runtime.string_runtime..char_ge_q)
+(define char->integer hissp_scheme.runtime.string_runtime..char_to_integer)
+(define integer->char hissp_scheme.runtime.string_runtime..integer_to_char)
 
 ;; `raise` is a Python keyword, so it can't be an ordinary global binding.
 (define raise-transformer hissp_scheme.macro.tail..raise_form)
@@ -404,15 +431,7 @@ scheme_bootstrap..prelude#:
 
 (hissp_scheme.runtime.scheme_bootstrap_runtime..install-library-exports
   (builtins..globals)
-  '(_Qzprim_add
-    _Qzprim_sub
-    _Qzprim_mul
-    _Qzprim_eq
-    _Qzprim_lt
-    _Qzprim_gt
-    _Qzprim_le
-    _Qzprim_ge
-    +
+  '(+
     -
     *
     /
@@ -522,7 +541,36 @@ scheme_bootstrap..prelude#:
     assoc
     map
     for-each
+    string?
+    make-string
+    string
+    string-length
+    string-ref
+    string-set!
+    string=?
+    string<?
+    string>?
+    string<=?
+    string>=?
+    substring
+    string-append
+    string->list
+    list->string
+    string-copy
+    string-copy!
+    string-fill!
+    string-map
+    string-for-each
+    char?
+    char=?
+    char<?
+    char>?
+    char<=?
+    char>=?
+    char->integer
+    integer->char
     vector-map
+    newline
     vector-for-each
     cons
     list
@@ -557,28 +605,4 @@ scheme_bootstrap..prelude#:
     caar
     cadr
     cdar
-    cddr
-    caaar
-    caadr
-    cadar
-    caddr
-    cdaar
-    cdadr
-    cddar
-    cdddr
-    caaaar
-    caaadr
-    caadar
-    caaddr
-    cadaar
-    cadadr
-    caddar
-    cadddr
-    cdaaar
-    cdaadr
-    cdadar
-    cdaddr
-    cddaar
-    cddadr
-    cdddar
-    cddddr))
+    cddr))

@@ -20,7 +20,7 @@ TEST_FILES = (
     TEST_DIR / "test_scheme_write.scm",
     TEST_DIR / "test_scheme_read.scm",
     TEST_DIR / "test_scheme_file.scm",
-    TEST_DIR / "test_scheme_string.scm",
+    TEST_DIR / "test_strings.scm",
     TEST_DIR / "test_scheme_python.scm",
     TEST_DIR / "test_library_imports.scm",
     TEST_DIR / "test_srfi1.scm",

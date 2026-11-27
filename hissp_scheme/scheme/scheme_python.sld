@@ -56,128 +56,86 @@
     (define (dict->hash-table dictionary)
       (rt-dict-to-hash-table dictionary (make-hash-table)))
 
-    (define (hash-table->dict hash-table)
-      (rt-hash-table-to-dict hash-table))
+    (define hash-table->dict rt-hash-table-to-dict)
 
-    (define (tuple->list value)
-      (rt-tuple-to-list value))
+    (define tuple->list rt-tuple-to-list)
 
-    (define (list->tuple value)
-      (rt-list-to-tuple value))
+    (define list->tuple rt-list-to-tuple)
 
-    (define (tuple->vector value)
-      (rt-tuple-to-vector value))
+    (define tuple->vector rt-tuple-to-vector)
 
-    (define (vector->tuple vector)
-      (rt-vector-to-tuple vector))
+    (define vector->tuple rt-vector-to-tuple)
 
-    (define (python-list->list value)
-      (rt-python-list-to-list value))
+    (define python-list->list rt-python-list-to-list)
 
-    (define (list->python-list value)
-      (rt-list-to-python-list value))
+    (define list->python-list rt-list-to-python-list)
 
-    (define (python-list->vector value)
-      (rt-python-list-to-vector value))
+    (define python-list->vector rt-python-list-to-vector)
 
-    (define (vector->python-list value)
-      (rt-vector-to-python-list value))
+    (define vector->python-list rt-vector-to-python-list)
 
-    (define (item-ref obj key)
-      (rt-item-ref obj key))
+    (define item-ref rt-item-ref)
 
-    (define (item-set! obj key value)
-      (rt-item-set-bang obj key value))
+    (define item-set! rt-item-set-bang)
 
-    (define (item-delete! obj key)
-      (rt-item-delete-bang obj key))
+    (define item-delete! rt-item-delete-bang)
 
-    (define (dict? obj)
-      (rt-dict-q obj))
+    (define dict? rt-dict-q)
 
-    (define (make-dict . items)
-      (rt-make-dict-from-list items))
+    (define make-dict rt-make-dict)
 
-    (define (dict-ref dictionary key)
-      (rt-dict-ref dictionary key))
+    (define dict-ref rt-dict-ref)
 
-    (define (dict-ref/default dictionary key default)
-      (rt-dict-ref-default dictionary key default))
+    (define dict-ref/default rt-dict-ref-default)
 
-    (define (dict-set! dictionary key value)
-      (rt-dict-set-bang dictionary key value))
+    (define dict-set! rt-dict-set-bang)
 
-    (define (dict-delete! dictionary key)
-      (rt-dict-delete-bang dictionary key))
+    (define dict-delete! rt-dict-delete-bang)
 
-    (define (dict-exists? dictionary key)
-      (rt-dict-exists-q dictionary key))
+    (define dict-exists? rt-dict-exists-q)
 
-    (define (dict-keys dictionary)
-      (rt-dict-keys dictionary))
+    (define dict-keys rt-dict-keys)
 
-    (define (dict-values dictionary)
-      (rt-dict-values dictionary))
+    (define dict-values rt-dict-values)
 
-    (define (dict-items dictionary)
-      (rt-dict-items dictionary))
+    (define dict-items rt-dict-items)
 
-    (define (dict-copy dictionary)
-      (rt-dict-copy dictionary))
+    (define dict-copy rt-dict-copy)
 
-    (define (dict-update! dictionary other)
-      (rt-dict-update-bang dictionary other))
+    (define dict-update! rt-dict-update-bang)
 
-    (define (tuple? obj)
-      (rt-tuple-q obj))
+    (define tuple? rt-tuple-q)
 
-    (define (make-tuple . items)
-      (rt-list-to-tuple items))
+    (define make-tuple rt-make-tuple)
 
-    (define (tuple-ref value index)
-      (rt-tuple-ref value index))
+    (define tuple-ref rt-tuple-ref)
 
-    (define (tuple-length value)
-      (rt-tuple-length value))
+    (define tuple-length rt-tuple-length)
 
-    (define (object? obj)
-      (rt-object-q obj))
+    (define object? rt-object-q)
 
-    (define (attribute-ref obj name)
-      (rt-attribute-ref obj name))
+    (define attribute-ref rt-attribute-ref)
 
-    (define (attribute-ref/default obj name default)
-      (rt-attribute-ref-default obj name default))
+    (define attribute-ref/default rt-attribute-ref-default)
 
-    (define (attribute-set! obj name value)
-      (rt-attribute-set-bang obj name value))
+    (define attribute-set! rt-attribute-set-bang)
 
-    (define (attribute-delete! obj name)
-      (rt-attribute-delete-bang obj name))
+    (define attribute-delete! rt-attribute-delete-bang)
 
-    (define (attribute-exists? obj name)
-      (rt-attribute-exists-q obj name))
+    (define attribute-exists? rt-attribute-exists-q)
 
-    (define (class? obj)
-      (rt-class-q obj))
+    (define class? rt-class-q)
 
-    (define (object-class obj)
-      (rt-object-class obj))
+    (define object-class rt-object-class)
 
-    (define (class-name klass)
-      (rt-class-name klass))
+    (define class-name rt-class-name)
 
-    (define (is-a? obj klass)
-      (rt-is-a-q obj klass))
+    (define is-a? rt-is-a-q)
 
-    (define (subclass? subclass superclass)
-      (rt-subclass-q subclass superclass))
+    (define subclass? rt-subclass-q)
 
-    (define (make-object klass . args)
-      (rt-make-object-from-list klass args))
+    (define make-object rt-make-object)
 
-    (define (method-ref obj name)
-      (rt-method-ref obj name))
+    (define method-ref rt-method-ref)
 
-    (define (call-method obj name . args)
-      (rt-call-method-from-list obj name args))))
+    (define call-method rt-call-method)))

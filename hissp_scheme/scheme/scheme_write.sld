@@ -1,7 +1,7 @@
 ;; R7RS-style `(scheme write)` library.
 
 (define-library (scheme write)
-  (export display write newline)
+  (export display write)
   (import (scheme base))
   (begin
     (define (optional-output-port maybe-port)
@@ -17,8 +17,4 @@
     (define (write value . maybe-port)
       (.write (optional-output-port maybe-port)
               (hissp_scheme.runtime.printer..write_string value))
-      #f)
-
-    (define (newline . maybe-port)
-      (.write (optional-output-port maybe-port) "\n")
       #f)))

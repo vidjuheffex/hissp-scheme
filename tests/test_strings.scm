@@ -1,8 +1,7 @@
 (import (scheme base)
-        (scheme string)
         (srfi 64))
 
-(test-group "scheme string"
+(test-group "strings"
   (define seen (@))
 
   (test-assert "string?" (string? "abc"))

@@ -39,10 +39,6 @@ def make_dict(*items):
     return result
 
 
-def make_dict_from_list(items):
-    return make_dict(*list_to_py(items)[0])
-
-
 def _require_dict(obj, procedure):
     if not dict_q(obj):
         raise TypeError(f"{procedure} expected a Python dict")
@@ -244,10 +240,6 @@ def make_object(cls, *args):
     return cls(*args)
 
 
-def make_object_from_list(cls, args):
-    return make_object(cls, *list_to_py(args)[0])
-
-
 def method_ref(obj, name):
     method = getattr(obj, _python_name(name))
     if not callable(method):
@@ -259,14 +251,9 @@ def call_method(obj, name, *args):
     return method_ref(obj, name)(*args)
 
 
-def call_method_from_list(obj, name, args):
-    return call_method(obj, name, *list_to_py(args)[0])
-
-
 __all__ = [
     "dict_q",
     "make_dict",
-    "make_dict_from_list",
     "dict_ref",
     "dict_ref_default",
     "dict_set_bang",
@@ -306,8 +293,6 @@ __all__ = [
     "is_a_q",
     "subclass_q",
     "make_object",
-    "make_object_from_list",
     "method_ref",
     "call_method",
-    "call_method_from_list",
 ]

@@ -195,12 +195,19 @@ def _scheme_import_plan(spec):
     raise AssertionError(f"unhandled import-set operator: {names.demunge(operator)}")
 
 
+# Module global recording the values that imports installed, so the compiler
+# can tell an imported binding from a Python name it happens to share.
+IMPORTED_VALUES = "_Qzscheme_imported"
+
+
 def install_import(env, spec):
     """Install an import spec directly into the caller's global environment."""
 
     value_exports, macro_exports = _scheme_import_plan(spec)
+    imported = env.setdefault(IMPORTED_VALUES, {})
     for local_name, value in value_exports.items():
         env[local_name] = value
+        imported[local_name] = value
 
     macro_namespace = env.get("_macro_")
     if macro_exports and macro_namespace is None:

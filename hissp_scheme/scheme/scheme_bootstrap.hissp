@@ -72,8 +72,8 @@ hissp..prelude#:
   ;; Scheme `if` requires an alternate here. Only `#f` is false in Scheme, so
   ;; this can't use Hissp's `if-else`, which follows Python truthiness (where
   ;; 0, "", and the empty list `()` are false). The expansion is a Python
-  ;; conditional expression; see `hissp_scheme/macro/conditional.py`.
-  (hissp_scheme.macro.conditional..if_form test consequent alternate))
+  ;; conditional expression; see `hissp_scheme/macro/inline.py`.
+  (hissp_scheme.macro.inline..if_form test consequent alternate))
 
 (defun let-pair (binding)
   ;; Validate one binding in Scheme-shaped `let`:

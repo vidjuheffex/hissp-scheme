@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import cmath
 import math
+import sys
 from fractions import Fraction
 
 from scheme_pairs import Pair, py_to_list
@@ -635,3 +636,8 @@ def vector_for_each(procedure, vector, *more):
 
 def case_match_q(key, labels):
     return any(eqv_q(key, label) for label in labels)
+
+
+def newline(port=None):
+    (sys.stdout if port is None else port).write("\n")
+    return False

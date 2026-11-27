@@ -120,7 +120,8 @@ language, SRFIs, and optional libraries must be imported explicitly:
 (import (scheme inexact))
 (import (scheme read))
 (import (scheme file))
-(import (scheme string))
+(import (scheme char))
+(import (scheme cxr))
 (import (scheme python))
 ```
 
@@ -190,12 +191,18 @@ Implemented or usable:
 - Explicit base import: `.sld` and `.scm` files enable the reader
   automatically, then use `(import (scheme base))` to opt into the base
   language.
-- R7RS-style I/O split: `(scheme write)` provides `display`, `write`, and
-  `newline`; `(scheme read)` provides `read-line`; `(scheme file)` provides
+- R7RS-style I/O split: `newline` is in base, `(scheme write)` provides
+  `display` and `write`, `(scheme read)` provides `read-line`; `(scheme file)` provides
   R7RS file procedures such as `open-input-file`, `call-with-output-file`,
   `file-exists?`, and `delete-file`.
-- `(scheme string)` provides immutable string procedures over Python `str`,
-  with characters represented as one-character strings.
+- Strings and characters: `(scheme base)` has the R7RS string and character
+  procedures (`string?`, `string-append`, `substring`, `string=?` and the
+  other comparisons, `string->list`, `string-map`, `char?`, `char->integer`,
+  and so on). `(scheme char)` has case conversion and character classes
+  (`char-upcase`, `string-downcase`, `char-alphabetic?`, `string-ci=?`,
+  `digit-value`, ...). Strings are immutable Python `str`, so `string-set!`,
+  `string-copy!`, and `string-fill!` raise `TypeError`. Characters are
+  one-character strings, written `#\a`, `#\space`, or `#\x41`.
 - `(scheme python)` provides Python interop helpers such as `dict->hash-table`,
   `hash-table->dict`, `tuple->list`, `list->tuple`, `dict-ref`, `dict-set!`,
   `attribute-ref`, and `attribute-set!`.
@@ -225,7 +232,9 @@ Implemented or usable:
   `letrec-syntax`, and the internal `syntax-case` hook used for procedural
   transformers.
 - Data basics: booleans, quoted/quasiquoted Scheme lists, mutable pairs, core
-  selectors/mutators, and mutable vectors. Quoted data keeps string literals
+  selectors/mutators, and mutable vectors. `(scheme base)` has the two-level
+  accessors (`cadr`, `cddr`, ...); `(scheme cxr)` has the three- and
+  four-level ones (`caddr`, `cadddr`, ...). Quoted data keeps string literals
   as strings, so `'("x" y)` is a list of a string and a symbol.
 - Symbols: a distinct, interned `Symbol` type (a `str` subclass, for Python
   interop) with `symbol?`, `symbol->string`, `string->symbol`, and `symbol=?`.
@@ -241,6 +250,8 @@ Implemented or usable:
   `number->string`, `string->number`, and the rest); `(scheme inexact)` has
   `sqrt`, `exp`, `log`, the trigonometric functions, `nan?`, `infinite?`, and
   `finite?`.
+- A list procedure given a non-list says so (`length` of a Python list
+  suggests `vector-length`), rather than reporting a dotted tail.
 - Lists: `map` and `for-each` (over several lists), `memq`/`memv`/`member`,
   `assq`/`assv`/`assoc`, `list?`, `make-list`, `list-tail`, `list-set!`,
   `list-copy`, `vector-map`, and `vector-for-each`.
@@ -271,22 +282,34 @@ Partial or intentionally explicit errors:
   continuations aren't supported.
 - The procedure passed to `call/cc` isn't called in tail position, because the
   frame that catches the escape has to stay live.
-- Non-tail recursion still uses the Python stack, at a few Python frames per
-  Scheme call. Importing the runtime raises Python's recursion limit to
-  100,000, which allows non-tail recursion roughly 20,000 calls deep.
+- Non-tail recursion still uses the Python stack. Importing the runtime
+  raises Python's recursion limit to 100,000. A procedure that makes no tail
+  calls uses one Python frame per call, so it can recurse about 95,000 calls
+  deep; one that also makes tail calls uses two frames per call, so about
+  half that.
 - Tail calls that pass Python keyword arguments (for example through SRFI-177
   `call/kw`) run as ordinary Python calls.
 - Local `set!` is detected from `set!` forms written in the variable's scope.
   A macro that expands into `set!` of a caller's local variable isn't detected,
   and assigns a module-level variable instead.
-- Scheme procedures are Python functions that run a small trampoline, so
-  call-heavy code is slower than the equivalent plain Python: naive
-  `(fib 22)` takes about 3.5 ms, versus about 1.1 ms for a Python function.
-  `if` compiles to a Python conditional expression (see
-  `hissp_scheme/macro/conditional.py`), and two-argument calls of `+`, `-`,
-  `*`, `=`, `<`, `>`, `<=`, and `>=` compile to Python operators unless the
-  name is rebound (see `hissp_scheme/macro/primitives.py`); other arities
-  call the variadic procedures.
+- Performance: naive `(fib 22)` takes about 1.5 ms, versus about 1.1 ms for
+  the same function in plain Python. The compiler gets there by emitting
+  plain Python where it can (see `hissp_scheme/macro/inline.py`,
+  `primitives.py`, and `tail.py`):
+  - `if` is a Python conditional expression, and `let` binds with `:=`
+    (a `let` whose variables are `set!` uses a lambda and cells instead).
+  - Two-argument `+`, `-`, `*`, `=`, `<`, `>`, `<=`, and `>=` are Python
+    operators, and `vector-ref` and `vector-set!` are Python indexing, unless
+    the name is rebound. Inline vector access skips the vector type check, so
+    it also indexes other Python sequences and accepts negative indices;
+    passing `vector-ref` as a value gets the checked procedure.
+  - A procedure whose body makes no tail calls skips the trampoline wrapper.
+  - A tail call to a Python callable bound by a Scheme `import` (such as
+    `cons` or `car`), or written as `module..name`, is a direct call. A
+    Python callable can't continue a chain of Scheme tail calls, so this
+    keeps tail calls proper. Bare Python builtins and Hissp prelude names
+    still go through the trampoline, since a later Scheme definition may
+    replace them.
 - SRFI-18 `raise` keeps SRFI-18's behavior of returning the handler's value,
   but it shares the handler stack with `(scheme base)`, so either library's
   handlers see the other's raises.

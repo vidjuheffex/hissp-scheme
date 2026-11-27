@@ -127,7 +127,7 @@
   (test-equal "list/cadr" 2 (cadr my-list))
   (test-equal "list/cddr" '(3) (cddr my-list))
   (test-assert "pair?" (pair? my-list))
-  (test-assert "null?" (null? (cdddr my-list)))
+  (test-assert "null?" (null? (cdr (cddr my-list))))
   (test-equal "length" 3 (length my-list))
   (test-equal "append" '(1 2 3 4) (append (list 1 2) (list 3 4)))
   (test-equal "reverse" '(3 2 1) (reverse my-list))
@@ -151,6 +151,8 @@
 
   ;; SRFIs are not ambient base bindings. Each module must import the SRFI it
   ;; wants before using that SRFI's procedures or macros.
+  (test-error "scheme-cxr caddr is not base" NameError
+              (caddr my-list))
   (test-error "srfi-1 iota is not base" NameError
               (iota 3))
   (test-error "srfi-28 format is not base" ValueError
@@ -159,6 +161,28 @@
               (call/kw dict (name "terrain")))
   (test-error "scheme-python attribute-set! is not base" NameError
               (attribute-set! my-list 'field-name "value"))
+
+  ;; R7RS puts string and character procedures in (scheme base).
+  (test-assert "string? base" (string? "abc"))
+  (test-equal "string? rejects symbols" #f (string? 'abc))
+  (test-equal "string-append base" "hello" (string-append "he" "ll" "o"))
+  (test-equal "string-append no arguments" "" (string-append))
+  (test-equal "string-length base" 3 (string-length "abc"))
+  (test-equal "substring base" "ell" (substring "hello" 1 4))
+  (test-assert "string=? variadic" (string=? "a" "a" "a"))
+  (test-equal "string<? variadic" #f (string<? "a" "c" "b"))
+  (test-equal "string->list base" (list #\a #\b) (string->list "ab"))
+  (test-equal "list->string base" "ab" (list->string (list #\a #\b)))
+  (test-equal "string-map several strings" "bdf"
+              (string-map (lambda (a b) (integer->char (+ (char->integer a) (char->integer b) -96)))
+                          "abc" "abc"))
+  (test-assert "char? base" (char? #\a))
+  (test-equal "char? rejects strings" #f (char? "ab"))
+  (test-assert "char<? variadic" (char<? #\a #\b #\c))
+  (test-equal "char->integer" 65 (char->integer #\A))
+  (test-equal "integer->char" #\A (integer->char 65))
+  (test-equal "named character" 32 (char->integer #\space))
+  (test-equal "hex character" #\A #\x41)
 
   (set-car! mutable-pair "new")
   (test-equal "set-car!" (cons "new" "tail") mutable-pair))

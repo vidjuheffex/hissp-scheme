@@ -78,6 +78,34 @@ _FunctionType = type(make_procedure)
 _PROCEDURE_CODE = make_procedure(lambda: None).__code__
 
 
+# Name that compiled procedure bodies use for `TailCall` (see
+# `hissp_scheme.macro.tail.procedure_form`).
+TAIL_CALL_NAME = "_Qzscheme_tail_call"
+
+
+def compiled_procedure(raw):
+    """Procedure for a body compiled by `procedure_form`.
+
+    A body that never makes a tail call can't return a `TailCall`, so it needs
+    no trampoline and is used as is, saving a Python call per Scheme call.
+    Python lists a closure variable in `co_freevars` only when the function
+    or a function nested in it uses it.
+    """
+
+    if TAIL_CALL_NAME not in raw.__code__.co_freevars:
+        raw._scheme_procedure = True
+        return raw
+    return make_procedure(raw)
+
+
+def is_scheme_procedure(obj):
+    """Whether `obj` is a procedure compiled from Scheme source."""
+
+    return obj.__class__ is _FunctionType and (
+        obj.__code__ is _PROCEDURE_CODE or getattr(obj, "_scheme_procedure", False)
+    )
+
+
 def procedure_q(obj):
     return callable(obj)
 

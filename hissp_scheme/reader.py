@@ -28,7 +28,7 @@ from pathlib import Path, PurePath
 from hissp.reader import Comment, Kwarg, Lexer, Lissp, Parser, _Unquote
 
 from hissp_scheme import names
-from hissp_scheme.macro.quote import QUOTE, is_string_literal_form
+from hissp_scheme.macro.quote import QUOTE, is_string_literal_form, list_form
 from hissp_scheme.runtime.numeric_syntax import number_literal
 
 
@@ -114,8 +114,8 @@ def _scheme_quote(form, symbols=False):
     with quote, so there quoted symbols stay plain Hissp strings and only list
     structure is lowered:
 
-        '(1 2 3)     -> (scheme_pairs.cons 1 (scheme_pairs.cons 2 ...))
-        '(1 2 . 3)   -> (scheme_pairs.cons 1 (scheme_pairs.cons 2 3))
+        '(1 2 3)     -> (scheme_pairs.scheme_list 1 2 3)
+        '(1 2 . 3)   -> (scheme_pairs.list_star 1 2 3)
         'symbol      -> ordinary Hissp quoted symbol
 
     The empty list remains Python's empty tuple `()`, which is already the
@@ -140,19 +140,13 @@ def _scheme_quote(form, symbols=False):
         tail = ()
         items = form
 
-    result = tail
-    for item in reversed(items):
-        result = ("scheme_pairs..cons", _scheme_quote(item), result)
-    return result
+    return list_form(tuple(_scheme_quote(item) for item in items), tail)
 
 
 def _scheme_list_expr(items, tail=()):
     """Build a `Pair` expression from already-lowered item expressions."""
 
-    result = tail
-    for item in reversed(items):
-        result = ("scheme_pairs..cons", item, result)
-    return result
+    return list_form(tuple(items), tail)
 
 
 def _scheme_quasiquote(form, *, in_list=False, symbols=False):
@@ -285,6 +279,35 @@ def _collapse_question_suffix_symbols(items: tuple) -> tuple:
     return tuple(result)
 
 
+_CHARACTER_NAMES = {
+    "alarm": "\a",
+    "backspace": "\b",
+    "delete": "\x7f",
+    "escape": "\x1b",
+    "newline": "\n",
+    "null": "\0",
+    "return": "\r",
+    "space": " ",
+    "tab": "\t",
+}
+
+
+def _character_literal(token):
+    """The character for a `#\\...` token. Characters are one-character strings."""
+
+    name = token[2:]
+    if len(name) == 1:
+        return name
+    if name in _CHARACTER_NAMES:
+        return _CHARACTER_NAMES[name]
+    if name[:1] in "xX":
+        try:
+            return chr(int(name[1:], 16))
+        except ValueError:
+            pass
+    raise SyntaxError(f"unknown character name: {token}")
+
+
 class SchemeParser(Parser):
     """Parser variant that recovers trailing-`=` symbols in call position.
 
@@ -337,6 +360,8 @@ class SchemeParser(Parser):
 
     def bare(self, v: str):
         if getattr(self.lissp, "scheme_quote_lists", False):
+            if v.startswith("#\\"):
+                return f"({_character_literal(v)!r})"
             number = number_literal(v)
             if number is not None:
                 return number

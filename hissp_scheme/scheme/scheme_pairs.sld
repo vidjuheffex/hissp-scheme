@@ -95,6 +95,7 @@ def scheme_list(*items):
 
 
 def list_to_py(value, *, require_proper=True):
+    start = value
     result = []
     seen = set()
     while pair_q(value):
@@ -104,8 +105,20 @@ def list_to_py(value, *, require_proper=True):
         result.append(value.car)
         value = value.cdr
     if require_proper and not null_q(value):
+        if value is start:
+            hint = ' (Python lists are Scheme vectors)' if isinstance(value, list) else ''
+            raise TypeError(
+                f'expected a list, got {type(value).__name__} {value!r}{hint}'
+            )
         raise TypeError(f'expected proper list, got dotted tail {value!r}')
     return result, value
+
+
+def list_star(*items):
+    # `(list_star a b tail)` is `(a b . tail)`: one flat call, where nested
+    # `cons` calls would hit Python's parenthesis nesting limit for long
+    # quoted lists.
+    return py_to_list(items[:-1], items[-1])
 
 
 def py_to_list(items, tail=()):

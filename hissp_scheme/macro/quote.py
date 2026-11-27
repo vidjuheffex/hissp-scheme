@@ -29,6 +29,16 @@ def is_string_literal_form(value):
     )
 
 
+def list_form(items, tail=()):
+    """Form building a list of the `items` forms ending in `tail`."""
+
+    if not items:
+        return tail
+    if tail == ():
+        return ("scheme_pairs..scheme_list", *items)
+    return ("scheme_pairs..list_star", *items, tail)
+
+
 def symbol_form(symbol):
     """Form evaluating to the interned symbol for a reader symbol."""
 
@@ -52,10 +62,7 @@ def datum_form(datum):
             raise SyntaxError("dot may only appear before the final tail in quoted lists")
         else:
             items, tail = datum, ()
-        result = tail
-        for item in reversed(items):
-            result = ("scheme_pairs..cons", datum_form(item), result)
-        return result
+        return list_form(tuple(datum_form(item) for item in items), tail)
 
     if datum is Ellipsis:
         return symbol_form("...")

@@ -225,6 +225,41 @@ def _binding_pair_names(bindings):
     ]
 
 
+# SRFI-177 forms. In `(call/kw f arg ... (name value ...))` the names are
+# keywords, not references, and `lambda/kw`/`define/kw` bind their keywords
+# like parameters: `(lambda/kw (a b (key ...)) body ...)`.
+CALL_KW = "callQzSOL_kw"
+LAMBDA_KW = "lambdaQzSOL_kw"
+DEFINE_KW = "defineQzSOL_kw"
+
+
+def _is_keyword_mapping(keywords):
+    return (
+        isinstance(keywords, tuple)
+        and len(keywords) == 2
+        and keywords[0] == "QzSTAR_QzSTAR_"
+    )
+
+
+def _call_kw_expressions(form):
+    function, *positional, keywords = form[1:]
+    expressions = [function, *positional]
+    if _is_keyword_mapping(keywords):
+        expressions.append(keywords[1])
+    elif isinstance(keywords, tuple):
+        expressions.extend(keywords[1::2])
+    return expressions
+
+
+def _keyword_formal_names(formals):
+    if not isinstance(formals, tuple):
+        return set()
+    names = _formal_names(formals)
+    if formals and isinstance(formals[-1], tuple):
+        names |= {item for item in formals[-1] if isinstance(item, str)}
+    return names
+
+
 def _scoped_parts(form):
     """Describe the lexical scopes of a Scheme binding form.
 
@@ -237,6 +272,17 @@ def _scoped_parts(form):
 
     if operator in {"schemeQzH_lambda", "lambda"} and len(form) >= 3:
         shadowed = _formal_names(form[1])
+        return [(item, shadowed) for item in form[2:]]
+
+    if operator == CALL_KW and len(form) >= 3:
+        return [(item, set()) for item in _call_kw_expressions(form)]
+
+    if operator == LAMBDA_KW and len(form) >= 3:
+        shadowed = _keyword_formal_names(form[1])
+        return [(item, shadowed) for item in form[2:]]
+
+    if operator == DEFINE_KW and len(form) >= 3 and isinstance(form[1], tuple):
+        shadowed = _keyword_formal_names(form[1][1:])
         return [(item, shadowed) for item in form[2:]]
 
     if operator == "define" and len(form) >= 3 and isinstance(form[1], tuple):
@@ -288,7 +334,23 @@ def _rebuild_scoped(form, rewrite):
 
     operator = form[0]
 
-    if operator in {"schemeQzH_lambda", "lambda"} or operator == "define":
+    if operator == CALL_KW:
+        function, *positional, keywords = form[1:]
+        if _is_keyword_mapping(keywords):
+            keywords = (keywords[0], rewrite(keywords[1], set()))
+        elif isinstance(keywords, tuple):
+            keywords = tuple(
+                rewrite(item, set()) if index % 2 else item
+                for index, item in enumerate(keywords)
+            )
+        return (
+            operator,
+            rewrite(function, set()),
+            *(rewrite(item, set()) for item in positional),
+            keywords,
+        )
+
+    if operator in {"schemeQzH_lambda", "lambda", "define", LAMBDA_KW, DEFINE_KW}:
         parts = _scoped_parts(form)
         head_length = len(form) - len(parts)
         return (*form[:head_length], *(rewrite(item, shadowed) for item, shadowed in parts))
@@ -403,6 +465,42 @@ def _collect_assigned_names(form, candidates, found):
         _collect_assigned_names(item, candidates, found)
 
 
+def assigned_locals(names, body):
+    """The names in `names` that `box_assigned_locals` would put in cells."""
+
+    found = set(names) & INTEGRATED_PRIMITIVES
+    for form in body:
+        _collect_assigned_names(form, set(names), found)
+    return found
+
+
+def rename_locals(form, renames):
+    """Alpha-rename references to the locals in `renames` within `form`.
+
+    Respects shadowing by inner binding forms and leaves quoted data alone.
+    """
+
+    if isinstance(form, str):
+        if form in renames:
+            return renames[form]
+        for name, new_name in renames.items():
+            prefix = f"{name}."
+            if form.startswith(prefix) and not form.startswith(f"{name}.."):
+                return new_name + form[len(name) :]
+        return form
+
+    if not isinstance(form, tuple) or not form or form[0] in _QUOTE_HEADS:
+        return form
+
+    if _scoped_parts(form) is not None:
+        return _rebuild_scoped(
+            form,
+            lambda item, shadowed: rename_locals(item, _without(renames, shadowed)),
+        )
+
+    return tuple(rename_locals(item, renames) for item in form)
+
+
 def box_assigned_locals(names, body):
     """Move locals that are targets of `set!` into mutable cells.
 
@@ -420,9 +518,7 @@ def box_assigned_locals(names, body):
     """
 
     body = tuple(body)
-    found = set(names) & INTEGRATED_PRIMITIVES
-    for form in body:
-        _collect_assigned_names(form, set(names), found)
+    found = assigned_locals(names, body)
     if not found:
         return body
 

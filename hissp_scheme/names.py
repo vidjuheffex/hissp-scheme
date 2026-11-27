@@ -21,10 +21,21 @@ UNRENAMED_KEYWORDS = frozenset(
 )
 
 
-# Munged names of the `(scheme base)` procedures that two-argument calls
-# compile to Python operators (see `hissp_scheme.macro.primitives`).
+# Munged names of the `(scheme base)` procedures whose calls compile to Python
+# expressions (see `hissp_scheme.macro.primitives`).
 INTEGRATED_PRIMITIVES = frozenset(
-    {"QzPLUS_", "QzH_", "QzSTAR_", "QzEQ_", "QzLT_", "QzGT_", "QzLT_QzEQ_", "QzGT_QzEQ_"}
+    {
+        "QzPLUS_",
+        "QzH_",
+        "QzSTAR_",
+        "QzEQ_",
+        "QzLT_",
+        "QzGT_",
+        "QzLT_QzEQ_",
+        "QzGT_QzEQ_",
+        "vectorQzH_ref",
+        "vectorQzH_setQzBANG_",
+    }
 )
 
 

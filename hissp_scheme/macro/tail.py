@@ -14,23 +14,33 @@ Scheme macro after one expansion step), and rewrites a plain application
 from __future__ import annotations
 
 import itertools
+import sys
+from contextvars import ContextVar
 from types import SimpleNamespace
 
 from hissp.compiler import Compiler, ENV, macroexpand1
 
+from hissp_scheme.runtime import control_runtime
+from hissp_scheme.macro.inline import compile_subform, fresh_let_name, sequence_form
 from hissp_scheme.macro.syntax_rules import (
     _formal_names,
+    assigned_locals,
     box_assigned_locals,
     expand_body_definitions,
+    rename_locals,
     syntax_rules_stable_identifiers,
 )
-from hissp_scheme.runtime.scheme_bootstrap_runtime import scheme_body, scheme_formals
+from hissp_scheme.runtime.scheme_bootstrap_runtime import (
+    IMPORTED_VALUES,
+    scheme_body,
+    scheme_formals,
+)
 
 TAIL = "hissp_scheme.macro.tail.._macro_.tail"
 
 # Bound once around each procedure so tail calls use a closure variable instead
 # of a module lookup through `__import__` on every call.
-TAIL_CALL = "_Qzscheme_tail_call"
+TAIL_CALL = control_runtime.TAIL_CALL_NAME
 
 _gensym_counter = itertools.count(1)
 
@@ -84,6 +94,49 @@ def _lookup_macro(head):
         return None
 
 
+# Procedure parameters in scope while a procedure body compiles. Parameters
+# are the only locals that keep their source names: `let` variables are
+# renamed, and internal definitions and `set!` targets live in cells.
+_LOCALS: ContextVar[frozenset] = ContextVar("scheme_locals", default=frozenset())
+
+_MISSING = object()
+
+
+def _global_value(head):
+    """Compile-time value of a global or qualified name, or `_MISSING`."""
+
+    if ".." in head:
+        module_name, _, attribute_path = head.partition("..")
+        value = sys.modules.get(module_name, _MISSING)
+        for attribute in attribute_path.split("."):
+            if value is _MISSING:
+                break
+            value = getattr(value, attribute, _MISSING)
+        return value
+    if not head.isidentifier() or head in _LOCALS.get():
+        return _MISSING
+    # Only trust a bare name bound by a Scheme `import`. Hissp's prelude and
+    # Python's builtins provide names like `count` and `filter` that a later
+    # Scheme definition may take over.
+    env = ENV.get(None) or {}
+    value = env.get(head, _MISSING)
+    if value is _MISSING or env.get(IMPORTED_VALUES, {}).get(head, _MISSING) is not value:
+        return _MISSING
+    return value
+
+
+def _calls_python_directly(head):
+    # A call to a Python function (a builtin, a pairs primitive, a class)
+    # can't continue a chain of Scheme tail calls, so it needn't go through
+    # the trampoline. Unknown or local callees still get a proper tail call.
+    value = _global_value(head)
+    return (
+        value is not _MISSING
+        and callable(value)
+        and not control_runtime.is_scheme_procedure(value)
+    )
+
+
 def mark_tail(form):
     """Return `form` rewritten for tail position inside a procedure body."""
 
@@ -104,6 +157,8 @@ def mark_tail(form):
     if any(_is_control(item) for item in form[1:]):
         return form
     if not isinstance(head, (str, tuple)):
+        return form
+    if isinstance(head, str) and _calls_python_directly(head):
         return form
     return (TAIL_CALL, *form)
 
@@ -142,7 +197,19 @@ def tail(form):
     return mark_tail(form)
 
 
-_macro_ = SimpleNamespace(tail=tail)
+def scope(formal_names, form):
+    """Compile `form` with `formal_names` added to the parameters in scope."""
+
+    token = _LOCALS.set(_LOCALS.get() | frozenset(formal_names))
+    try:
+        return compile_subform(form)
+    finally:
+        _LOCALS.reset(token)
+
+
+SCOPE = "hissp_scheme.macro.tail.._macro_.scope"
+
+_macro_ = SimpleNamespace(tail=tail, scope=scope)
 
 
 # ---------------------------------------------------------------------------
@@ -175,20 +242,37 @@ def procedure_form(name, formals, body):
     return (
         "hissp.macros.._macro_.let",
         (TAIL_CALL, "hissp_scheme.runtime.control_runtime..TailCall"),
-        ("hissp_scheme.runtime.control_runtime..make_procedure", raw),
+        (
+            "hissp_scheme.runtime.control_runtime..compiled_procedure",
+            # A procedure's own name counts as local in its body, since the
+            # global may still hold an imported value it's replacing.
+            (SCOPE, tuple(sorted(_formal_names(formals) | {name} - {None})), raw),
+        ),
     )
 
 
-def let_body(bindings, body):
-    """Expand the body of a plain `let`, boxing bound names that are `set!`."""
+def let_form(bindings, body):
+    """Hissp form for a plain (not named) Scheme `let`.
 
+    Usually the result is an inline `:=` expression (see `inline`). Names that
+    are `set!` stay on the Hissp `let` path with cells, since an assignment
+    expression in a nested lambda would bind that lambda's variable instead.
+    """
+
+    _check_bindings(bindings, "let")
+    names = [name for name, _ in bindings]
     expanded = expand_body_definitions(body, syntax_rules_stable_identifiers())
-    names = {
-        binding[0]
-        for binding in bindings
-        if isinstance(binding, tuple) and binding and isinstance(binding[0], str)
-    }
-    return box_assigned_locals(names, expanded)
+    if assigned_locals(names, expanded):
+        return (
+            "hissp.macros.._macro_.let",
+            tuple(itertools.chain.from_iterable(bindings)),
+            *box_assigned_locals(names, expanded),
+        )
+    renames = {name: fresh_let_name(name) for name in names}
+    renamed = tuple(rename_locals(form, renames) for form in expanded)
+    return sequence_form(
+        [(renames[name], value) for name, value in bindings], renamed
+    )
 
 
 # ---------------------------------------------------------------------------
