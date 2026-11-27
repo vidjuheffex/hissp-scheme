@@ -397,3 +397,31 @@
   (test-equal "expected proper list, got dotted tail 2"
               (guard (e (#t (builtins..str e)))
                 (length (cons 1 2)))))
+
+(define (r7-cubic t x) (* t t x))
+(define r7-call-count 0)
+(define (r7-counted value)
+  (set! r7-call-count (+ r7-call-count 1))
+  value)
+
+(test-group "r7rs variadic integrated arithmetic"
+  (test-equal 7 (+ 3 2 2))
+  (test-equal 12 (r7-cubic 2 3))
+  (test-equal 7 (- 10 1 2))
+  (test-equal -5 (- 5))
+  (test-equal 5 (- -5))
+  (test-equal 1 (+ 1/3 1/3 1/3))
+  (test-equal #t (exact-integer? (* 1/2 2 3)))
+  (test-equal 10 (+ (r7-cubic 1 1) (* 1 2) (- 10 3)))
+  (test-equal #t (< 1 2 3))
+  (test-equal #f (< 1 3 2))
+  (test-equal #t (= 2 2 2))
+  ;; Every argument is evaluated, as for a procedure call.
+  (test-equal 3 (begin (set! r7-call-count 0)
+                       (< 2 (r7-counted 1) (r7-counted 3) (r7-counted 4))
+                       r7-call-count))
+  (test-equal 6 (apply + '(1 2 3)))
+  ;; The bootstrap prelude binds the same procedure, so a module re-running
+  ;; its prelude (a hot reload) never sees two-argument `operator.add`.
+  (test-equal #t (eq? + hissp_scheme.runtime.arithmetic..add))
+  (test-equal #t (eq? / hissp_scheme.runtime.arithmetic..div)))

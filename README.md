@@ -298,9 +298,11 @@ Partial or intentionally explicit errors:
   `primitives.py`, and `tail.py`):
   - `if` is a Python conditional expression, and `let` binds with `:=`
     (a `let` whose variables are `set!` uses a lambda and cells instead).
-  - Two-argument `+`, `-`, `*`, `=`, `<`, `>`, `<=`, and `>=` are Python
-    operators, and `vector-ref` and `vector-set!` are Python indexing, unless
-    the name is rebound. Inline vector access skips the vector type check, so
+  - `+`, `-`, and `*` with two or more arguments (and `(- x)`) are Python
+    operators, as are `=`, `<`, `>`, `<=`, and `>=` with two arguments, or
+    more when every argument is a variable or number. `vector-ref` and
+    `vector-set!` are Python indexing. None of this applies once the name is
+    rebound. Inline vector access skips the vector type check, so
     it also indexes other Python sequences and accepts negative indices;
     passing `vector-ref` as a value gets the checked procedure.
   - A procedure whose body makes no tail calls skips the trampoline wrapper.

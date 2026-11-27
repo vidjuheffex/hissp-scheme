@@ -167,17 +167,17 @@ hissp..prelude#:
     (@ 'hissp.macros.._macro_.progn
        ;; Keep the standard Hissp base available.
        (tuple (@ 'hissp.macros.._macro_.prelude env))
-       ;; Scheme operator spellings. The symbols here are already Hissp-munged:
-       ;; `+` -> QzPLUS_, `<=` -> QzLT_QzEQ_, etc.
-       (tuple (@ 'hissp.macros.._macro_.define 'QzPLUS_ 'operator..add))
-       (tuple (@ 'hissp.macros.._macro_.define 'QzH_ 'operator..sub))
-       (tuple (@ 'hissp.macros.._macro_.define 'QzSTAR_ 'operator..mul))
-       (tuple (@ 'hissp.macros.._macro_.define 'QzSOL_ 'operator..truediv))
-       (tuple (@ 'hissp.macros.._macro_.define 'QzEQ_ 'operator..eq))
-       (tuple (@ 'hissp.macros.._macro_.define 'QzLT_ 'operator..lt))
-       (tuple (@ 'hissp.macros.._macro_.define 'QzGT_ 'operator..gt))
-       (tuple (@ 'hissp.macros.._macro_.define 'QzLT_QzEQ_ 'operator..le))
-       (tuple (@ 'hissp.macros.._macro_.define 'QzGT_QzEQ_ 'operator..ge))
+       ;; Scheme arithmetic, the same procedures `(scheme base)` exports. The
+       ;; symbols here are already Hissp-munged: `+` -> QzPLUS_, etc.
+       (tuple (@ 'hissp.macros.._macro_.define 'QzPLUS_ 'hissp_scheme.runtime.arithmetic..add))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzH_ 'hissp_scheme.runtime.arithmetic..sub))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzSTAR_ 'hissp_scheme.runtime.arithmetic..mul))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzSOL_ 'hissp_scheme.runtime.arithmetic..div))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzEQ_ 'hissp_scheme.runtime.arithmetic..num_eq))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzLT_ 'hissp_scheme.runtime.arithmetic..num_lt))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzGT_ 'hissp_scheme.runtime.arithmetic..num_gt))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzLT_QzEQ_ 'hissp_scheme.runtime.arithmetic..num_le))
+       (tuple (@ 'hissp.macros.._macro_.define 'QzGT_QzEQ_ 'hissp_scheme.runtime.arithmetic..num_ge))
        ;; Scheme booleans. `not` is a Python keyword, so Scheme source spells
        ;; it `_Qzkw_not` (see `hissp_scheme.names`).
        (tuple (@ 'hissp.macros.._macro_.define 'QzHASH_t True))
