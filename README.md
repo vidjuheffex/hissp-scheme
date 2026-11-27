@@ -115,6 +115,7 @@ language, SRFIs, and optional libraries must be imported explicitly:
 (import (srfi 28))
 (import (srfi 64))
 (import (srfi 69))
+(import (srfi 132))
 (import (srfi 177))
 (import (scheme write))
 (import (scheme inexact))
@@ -169,6 +170,14 @@ safely kill arbitrary running threads.
 `(srfi 69)` provides basic hash tables backed by Python dictionaries. Use it
 for Scheme-level mutable maps instead of Hissp `%` literals or direct Python
 `.get`/`.update` calls.
+
+`(srfi 132)` provides the full sort library: `list-sort`, `vector-sort`,
+`vector-sort!`, merging, neighbor-duplicate deletion, median finding, and
+selection. Sorting is backed by Python's Timsort through
+`hissp_scheme/runtime/srfi132_runtime.py`; Timsort is stable, so every sort is
+stable and the `stable` variants are aliases. Note SRFI-132's argument order:
+the comparator comes first, except for `vector-sort!` and `vector-stable-sort!`,
+which take the vector first.
 
 `(srfi 177)` provides keyword-call syntax: `call/kw`, `lambda/kw`, and
 `define/kw`. Its macros are owned by the SRFI module and installed with
@@ -260,7 +269,7 @@ Implemented or usable:
 - Rest parameters: dotted and variadic `define`/`lambda` forms bind Scheme
   `Pair` lists, not Python tuples.
 - SRFI modules: `(srfi 1)`, `(srfi 18)`, `(srfi 28)`, `(srfi 64)`,
-  `(srfi 69)`, and `(srfi 177)`.
+  `(srfi 69)`, `(srfi 132)`, and `(srfi 177)`.
 
 Partial or intentionally explicit errors:
 

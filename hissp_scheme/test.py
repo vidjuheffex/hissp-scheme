@@ -28,6 +28,7 @@ TEST_FILES = (
     TEST_DIR / "test_srfi28.scm",
     TEST_DIR / "test_srfi64.scm",
     TEST_DIR / "test_srfi69.scm",
+    TEST_DIR / "test_srfi132.scm",
     TEST_DIR / "test_srfi177.scm",
     TEST_DIR / "test_syntax_rules.scm",
     TEST_DIR / "test_reader.scm",

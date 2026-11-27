@@ -21,6 +21,7 @@ CORE_LIBRARY_PATHS = (
     ("srfi", "srfi28.sld"),
     ("srfi", "srfi64.sld"),
     ("srfi", "srfi69.sld"),
+    ("srfi", "srfi132.sld"),
     ("scheme", "scheme_python.sld"),
     ("scheme", "scheme_file.sld"),
     ("srfi", "srfi177.sld"),
