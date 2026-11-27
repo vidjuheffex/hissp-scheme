@@ -140,8 +140,10 @@ def list_ref(value, index):
 
 
 def car_plus_cdr(pair):
+    from hissp_scheme.runtime.control_runtime import values
+
     pair = _require_pair(pair, 'car+cdr')
-    return (pair.car, pair.cdr)
+    return values(pair.car, pair.cdr)
 
 
 def scheme_append(*lists):

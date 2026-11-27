@@ -53,6 +53,8 @@ def _render(value, display, seen):
         return "()"
     if _is_pair(value):
         return _render_pair(value, display, seen)
+    if type(value) is bytearray:
+        return "#u8(" + " ".join(str(byte) for byte in value) + ")"
     if type(value) is list:
         if id(value) in seen:
             return "#(...)"

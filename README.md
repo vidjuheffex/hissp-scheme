@@ -81,11 +81,19 @@ positions. `hissp_scheme/runtime/control_runtime.py` holds the matching
 runtime: the tail-call trampoline, escape continuations, `dynamic-wind`, the
 exception-handler stack, multiple values, and parameter objects.
 
+`hissp_scheme/macro/derived.py` holds the procedural transformers for
+`define-record-type`, `define-values`, `let-values`, `let*-values`,
+`cond-expand`, `include-ci`, and `syntax-error`. The body expander also calls
+it, so the definition forms define locals when they appear in a body.
+
 `hissp_scheme/runtime/base_runtime.py` implements the `(scheme base)` numeric
-tower, `eqv?`/`equal?`, and the R7RS list procedures. `runtime/symbols.py`
-defines the `Symbol` type, `runtime/printer.py` the `write`/`display`
-notation, and `hissp_scheme/names.py` the spelling used for identifiers that
-are Python keywords.
+tower, `eqv?`/`equal?`, and the R7RS list procedures. `runtime/ports.py` has
+the port procedures, `runtime/bytevectors.py` the bytevector procedures,
+`runtime/records.py` the record types, and `runtime/features.py` the
+`features`/`cond-expand` feature list. `runtime/symbols.py` defines the
+`Symbol` type, `runtime/printer.py` the `write`/`display` notation, and
+`hissp_scheme/names.py` the spelling used for identifiers that are Python
+keywords.
 
 `hissp_scheme/scheme/scheme_pairs.sld` owns the core `Pair` runtime,
 fundamental list procedures, and the Python-list-backed vector substrate used
@@ -140,19 +148,29 @@ Scheme libraries declare their public surface with R7RS-shaped
 value exports and macro exports into the caller, so SRFI macros live with their
 SRFI modules instead of being hidden inside the base prelude.
 
-Supported library clauses are `export`, `import`, `begin`, and `include`.
-`include` splices source forms from files relative to the containing `.sld` or
-`.scm` file before compilation. This is source composition, not module import;
-use `import` when you want another compiled library/module.
+Supported library clauses are `export`, `import`, `begin`, `include`,
+`include-ci`, `include-library-declarations`, and `cond-expand`. `include`
+splices source forms from files relative to the containing `.sld` or `.scm`
+file before compilation. This is source composition, not module import; use
+`import` when you want another compiled library/module. `include-ci` folds
+identifier case (not strings or characters) in the included forms.
 
-`include-ci`, `include-library-declarations`, and `cond-expand` currently fail
-with explicit errors instead of silently doing the wrong thing.
+`include`, `include-ci`, and `cond-expand` also work in programs, at top level
+and in bodies. Feature requirements can test feature identifiers from
+`(features)` (`r7rs`, `ratios`, `full-unicode`, `python`, `srfi-1`, the OS and
+CPU, ...), `(library (srfi 1))`, and `and`/`or`/`not`.
 
 ## SRFIs
 
 Currently implemented:
 
-`(srfi 1)` provides list-library extensions on top of the base `Pair` runtime.
+`(srfi 1)` provides the full SRFI-1 list library (`any`, `every`, `find`,
+`fold-right`, `reduce`, `partition`, `delete-duplicates`, the `lset-*` set
+operations, and the rest) on top of the base `Pair` runtime, backed by
+`hissp_scheme/runtime/srfi1_runtime.py`. The procedures it shares with
+`(scheme base)` and `(scheme cxr)` are re-exported from there. The
+linear-update `!` procedures are the same as their pure versions, which SRFI-1
+permits.
 
 `(srfi 18)` provides multithreading support: threads, mutexes, condition
 variables, time objects, exception handlers, and SRFI-18 exception predicates.
@@ -200,10 +218,38 @@ Implemented or usable:
 - Explicit base import: `.sld` and `.scm` files enable the reader
   automatically, then use `(import (scheme base))` to opt into the base
   language.
-- R7RS-style I/O split: `newline` is in base, `(scheme write)` provides
-  `display` and `write`, `(scheme read)` provides `read-line`; `(scheme file)` provides
-  R7RS file procedures such as `open-input-file`, `call-with-output-file`,
-  `file-exists?`, and `delete-file`.
+- Ports: ports are Python file objects. Base has the current ports
+  (`current-input-port`, `current-output-port`, `current-error-port`, which are
+  parameters defaulting to `sys.stdin`/`stdout`/`stderr`, so `parameterize`
+  redirects output), port predicates, `close-port` and friends,
+  `call-with-port`, `flush-output-port`, string ports (`open-input-string`,
+  `open-output-string`, `get-output-string`), bytevector ports, `read-char`,
+  `peek-char`, `read-line`, `read-string`, `char-ready?`, `write-char`,
+  `write-string`, `newline`, the binary `read-u8`/`peek-u8`/`u8-ready?`/
+  `read-bytevector`/`read-bytevector!`/`write-u8`/`write-bytevector`, and
+  `eof-object`/`eof-object?`. `(scheme write)` provides `display` and `write`,
+  defaulting to the current output port. `(scheme read)` provides `read`,
+  which parses one datum from a port into the same values `quote` builds
+  (including `#|...|#` and `#;` comments, `|symbols|`, datum labels, and
+  `#!fold-case`), leaving the rest of the port unread; read errors satisfy
+  `read-error?`. It also re-exports `read-line`; as an extension,
+  `(read-line "prompt> ")` writes a prompt first. `(scheme file)` provides R7RS file procedures such as
+  `open-input-file`, `call-with-output-file`, `file-exists?`, and
+  `delete-file`.
+- Bytevectors: `bytevector`, `bytevector?`, `make-bytevector`,
+  `bytevector-u8-ref`/`-set!`, `bytevector-length`, `bytevector-copy`,
+  `bytevector-copy!`, `bytevector-append`, `utf8->string`, and
+  `string->utf8`. Bytevectors are Python `bytearray` and print as `#u8(...)`.
+- Literals: vector literals `#(1 a "s")` and bytevector literals
+  `#u8(1 2 255)`, including inside quoted data and quasiquote (`` `#(a ,x) ``).
+- Records: `define-record-type`, at top level or in a body. Each record type
+  is a Python class with one slot per field; instances print as
+  `#<point x: 1 y: 2>`. The constructor may also be `#f` (none) or a bare name
+  (all fields in order).
+- Multiple-value bindings: `define-values`, `let-values`, and `let*-values`,
+  with fixed, dotted, and identifier formals.
+- `syntax-error` (raises a `SyntaxError` at expansion time), `features`, and
+  `rationalize`.
 - Strings and characters: `(scheme base)` has the R7RS string and character
   procedures (`string?`, `string-append`, `substring`, `string=?` and the
   other comparisons, `string->list`, `string-map`, `char?`, `char->integer`,
@@ -239,7 +285,8 @@ Implemented or usable:
 - Parameters: `make-parameter` and `parameterize`.
 - Macro system: `define-syntax`, `syntax-rules`, `let-syntax`,
   `letrec-syntax`, and the internal `syntax-case` hook used for procedural
-  transformers.
+  transformers. Quoted data in a `syntax-rules` template keeps its symbols as
+  written (`'(tag x)` expands to the symbol `tag`, with `x` substituted).
 - Data basics: booleans, quoted/quasiquoted Scheme lists, mutable pairs, core
   selectors/mutators, and mutable vectors. `(scheme base)` has the two-level
   accessors (`cadr`, `cddr`, ...); `(scheme cxr)` has the three- and
@@ -282,8 +329,11 @@ Partial or intentionally explicit errors:
   variables, timeouts, and thread-local specific fields are implemented; safe
   forced termination of another live running thread is not available on CPython
   and fails explicitly.
-- `include-ci`, `include-library-declarations`, and `cond-expand` currently
-  raise explicit errors.
+- `peek-char` and `peek-u8` keep the peeked item in a per-port buffer that the
+  Scheme reading procedures consume first. Reading the same port through
+  Python methods directly skips that buffer.
+- Characters are one-character strings, so `read` returns the same value for
+  `#\a` and `"a"`, and `write` prints characters as strings.
 - `call/cc` is escape-only. A continuation works while its `call/cc` is still
   running (early exit, breaking out of loops, non-local return). Invoking it
   after that `call/cc` has returned, or from another thread, raises

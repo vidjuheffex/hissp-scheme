@@ -156,6 +156,17 @@ def _call_with_values_raw(producer, consumer):
 call_with_values = make_procedure(_call_with_values_raw, "call-with-values")
 
 
+def values_list(producer, required, has_rest):
+    """The values `producer` returns, checked against `define-values` formals."""
+
+    result = producer()
+    items = result.items if result.__class__ is Values else (result,)
+    if len(items) < required or (not has_rest and len(items) > required):
+        expected = f"at least {required}" if has_rest else str(required)
+        raise TypeError(f"define-values expected {expected} values, got {len(items)}")
+    return items
+
+
 # ---------------------------------------------------------------------------
 # Escape continuations
 # ---------------------------------------------------------------------------
@@ -472,7 +483,9 @@ def parameterize_(thunk, *bindings):
     converted = []
     for parameter, value in bindings:
         if not isinstance(parameter, Parameter):
-            raise TypeError(f"parameterize expected a parameter object, got {parameter!r}")
+            raise TypeError(
+                f"parameterize expected a parameter object, got {parameter!r}"
+            )
         if parameter.converter is not None:
             value = parameter.converter(value)
         converted.append((parameter, value))

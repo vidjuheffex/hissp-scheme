@@ -37,9 +37,21 @@ def _normalizing(method):
 
 
 for _name in (
-    "__add__", "__radd__", "__sub__", "__rsub__", "__mul__", "__rmul__",
-    "__truediv__", "__rtruediv__", "__mod__", "__rmod__", "__pow__", "__rpow__",
-    "__neg__", "__pos__", "__abs__",
+    "__add__",
+    "__radd__",
+    "__sub__",
+    "__rsub__",
+    "__mul__",
+    "__rmul__",
+    "__truediv__",
+    "__rtruediv__",
+    "__mod__",
+    "__rmod__",
+    "__pow__",
+    "__rpow__",
+    "__neg__",
+    "__pos__",
+    "__abs__",
 ):
     setattr(Rational, _name, _normalizing(getattr(Fraction, _name)))
 del _name
@@ -137,7 +149,9 @@ def number_literal(token):
     if not token or token[0] not in "+-.#0123456789":
         return None
     lowered = token.lower()
-    if not ("/" in lowered or lowered.endswith(("inf.0", "nan.0")) or lowered[0] == "#"):
+    if not (
+        "/" in lowered or lowered.endswith(("inf.0", "nan.0")) or lowered[0] == "#"
+    ):
         return None
     value = string_to_number(token)
     return None if value is False else value

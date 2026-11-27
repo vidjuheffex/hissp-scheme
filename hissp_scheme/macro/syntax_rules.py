@@ -50,6 +50,14 @@ DEFAULT_STABLE_IDENTIFIERS = {
     "cond",
     "case",
     "caseQzH_dispatch",
+    "defineQzH_recordQzH_type",
+    "defineQzH_values",
+    "letQzH_values",
+    "letQzSTAR_QzH_values",
+    "condQzH_expand",
+    "includeQzH_ci",
+    "syntaxQzH_error",
+    "else",
     # Boolean constants installed by the base prelude.
     "QzHASH_t",
     "QzHASH_f",
@@ -186,11 +194,7 @@ def cell_ref_form(cell_name):
 def cell_name_from_ref_form(form):
     # Inverse of `cell_ref_form`, used by `set!` when a macro passes an already
     # rewritten local reference as its target.
-    if (
-        isinstance(form, str)
-        and form.startswith(CELL_PREFIX)
-        and form.endswith("[0]")
-    ):
+    if isinstance(form, str) and form.startswith(CELL_PREFIX) and form.endswith("[0]"):
         return form[:-3]
     return None
 
@@ -353,7 +357,10 @@ def _rebuild_scoped(form, rewrite):
     if operator in {"schemeQzH_lambda", "lambda", "define", LAMBDA_KW, DEFINE_KW}:
         parts = _scoped_parts(form)
         head_length = len(form) - len(parts)
-        return (*form[:head_length], *(rewrite(item, shadowed) for item, shadowed in parts))
+        return (
+            *form[:head_length],
+            *(rewrite(item, shadowed) for item, shadowed in parts),
+        )
 
     if operator in {"let", "letQzSTAR_", "letrec", "letrecQzSTAR_"}:
         named = operator == "let" and isinstance(form[1], str)
@@ -533,6 +540,14 @@ def box_assigned_locals(names, body):
         _rewrite_internal_definition_references(form, cells) for form in body
     )
     return (("hissp.macros.._macro_.let", bindings, *rewritten),)
+
+
+class _AllIdentifiers:
+    def __contains__(self, value):
+        return True
+
+
+_ALL_IDENTIFIERS = _AllIdentifiers()
 
 
 def syntax_rules_stable_identifiers(extra=()):
@@ -876,6 +891,11 @@ def _expand(
     if isinstance(template, tuple):
         if not repeat_path:
             _validate_template_ellipsis(template, bindings)
+        if template and template[0] in _QUOTE_HEADS:
+            # Quoted template data names symbols, not bindings: substitute
+            # pattern variables but leave every other identifier as written.
+            stable_identifiers = _ALL_IDENTIFIERS
+            qualified_identifiers = {}
         return _expand_sequence(
             template,
             bindings,
@@ -1200,11 +1220,19 @@ def expand_body_definitions(body, stable_identifiers=None):
 
 def _splice_begin_forms(body):
     # A `begin` directly in a body is spliced into it, so definitions inside
-    # it are internal definitions of the enclosing body.
+    # it are internal definitions of the enclosing body. Forms that expand to
+    # definitions (`define-record-type`, `define-values`, `cond-expand`,
+    # `include`) are expanded here for the same reason.
+    from hissp_scheme.macro.derived import definition_expansion
+
     result = []
     for form in body:
         if type(form) is tuple and form and form[0] == "begin":
             result.extend(_splice_begin_forms(form[1:]))
+            continue
+        expansion = definition_expansion(form)
+        if expansion is not None:
+            result.extend(_splice_begin_forms(expansion[1:]))
         else:
             result.append(form)
     return tuple(result)

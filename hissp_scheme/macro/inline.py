@@ -36,7 +36,9 @@ def compile_subform(form, env=None):
     """Python code for `form`, compiled in the current module's environment."""
 
     env = ENV.get() if env is None else env
-    compiler = Compiler(qualname=env.get("__name__", "__main__"), env=env, evaluate=False)
+    compiler = Compiler(
+        qualname=env.get("__name__", "__main__"), env=env, evaluate=False
+    )
     code = compiler.compile_form(form)
     if compiler.error is not None:
         raise compiler.error

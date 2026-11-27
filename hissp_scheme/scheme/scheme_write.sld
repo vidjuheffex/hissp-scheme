@@ -6,7 +6,7 @@
   (begin
     (define (optional-output-port maybe-port)
       (if (null? maybe-port)
-        sys..stdout
+        (current-output-port)
         (car maybe-port)))
 
     (define (display value . maybe-port)

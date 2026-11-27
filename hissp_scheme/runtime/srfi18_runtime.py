@@ -15,7 +15,6 @@ import time as _time
 from dataclasses import dataclass
 from typing import Any, Callable
 
-import hissp
 
 from hissp_scheme.runtime import control_runtime, symbols
 

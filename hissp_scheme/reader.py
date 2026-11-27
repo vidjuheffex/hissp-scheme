@@ -28,7 +28,13 @@ from pathlib import Path, PurePath
 from hissp.reader import Comment, Kwarg, Lexer, Lissp, Parser, _Unquote
 
 from hissp_scheme import names
-from hissp_scheme.macro.quote import QUOTE, is_string_literal_form, list_form
+from hissp_scheme.macro.quote import (
+    BYTEVECTOR_LITERAL,
+    QUOTE,
+    VECTOR_LITERAL,
+    is_string_literal_form,
+    list_form,
+)
 from hissp_scheme.runtime.numeric_syntax import number_literal
 
 
@@ -36,6 +42,7 @@ SCHEME_PRELUDE_TAG = "scheme..prelude#:"
 SCHEME_BOOTSTRAP_PRELUDE_TAG = "scheme_bootstrap..prelude#:"
 SCHEME_PRELUDE_TAGS = (SCHEME_PRELUDE_TAG, SCHEME_BOOTSTRAP_PRELUDE_TAG)
 SCHEME_SOURCE_SUFFIXES = {".scm", ".sld"}
+_LITERAL_PREFIXES = {"#", "#u8"}
 
 
 def _uses_scheme_language(code: str, filename: str | None = None) -> bool:
@@ -170,6 +177,12 @@ def _scheme_quasiquote(form, *, in_list=False, symbols=False):
                 return form
             raise SyntaxError("unquote-splicing not in list")
         raise SyntaxError(f"unsupported unquote target: {form.target}")
+
+    if isinstance(form, tuple) and form and form[0] == VECTOR_LITERAL:
+        items = _scheme_quasiquote(form[1:], symbols=symbols)
+        return ("scheme_pairs..list_to_vector", items)
+    if isinstance(form, tuple) and form and form[0] == BYTEVECTOR_LITERAL:
+        return form
 
     if not isinstance(form, tuple):
         return _quote_atom(form, symbols)
@@ -380,7 +393,21 @@ class SchemeParser(Parser):
             yield from super()._parse()
             return
 
+        symbols = getattr(self.lissp, "scheme_symbols", False)
+        # `#(` and `#u8(` lex as a bare `#`/`#u8` directly followed by `(`.
+        # Hold the bare token until the next one shows whether a literal starts.
+        literal_prefix = None
         for k, v, self._pos in self.tokens:
+            if literal_prefix is not None:
+                prefix, literal_prefix = literal_prefix, None
+                if k == "open":
+                    head = VECTOR_LITERAL if prefix == "#" else BYTEVECTOR_LITERAL
+                    yield (head, *self._open())
+                    continue
+                yield _scheme_form(self.bare(prefix), symbols)
+            if k == "bare" and v in _LITERAL_PREFIXES:
+                literal_prefix = v
+                continue
             if k == "whitespace":
                 continue
             if k == "comment":
@@ -429,8 +456,10 @@ class SchemeParser(Parser):
                 form = self.bare(v)
 
             if getattr(self.lissp, "scheme_quote_lists", False):
-                form = _scheme_form(form, getattr(self.lissp, "scheme_symbols", False))
+                form = _scheme_form(form, symbols)
             yield form
+        if literal_prefix is not None:
+            yield _scheme_form(self.bare(literal_prefix), symbols)
         self._check_depth()
 
 

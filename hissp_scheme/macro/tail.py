@@ -120,7 +120,10 @@ def _global_value(head):
     # Scheme definition may take over.
     env = ENV.get(None) or {}
     value = env.get(head, _MISSING)
-    if value is _MISSING or env.get(IMPORTED_VALUES, {}).get(head, _MISSING) is not value:
+    if (
+        value is _MISSING
+        or env.get(IMPORTED_VALUES, {}).get(head, _MISSING) is not value
+    ):
         return _MISSING
     return value
 
@@ -270,9 +273,7 @@ def let_form(bindings, body):
         )
     renames = {name: fresh_let_name(name) for name in names}
     renamed = tuple(rename_locals(form, renames) for form in expanded)
-    return sequence_form(
-        [(renames[name], value) for name, value in bindings], renamed
-    )
+    return sequence_form([(renames[name], value) for name, value in bindings], renamed)
 
 
 # ---------------------------------------------------------------------------
@@ -375,9 +376,7 @@ def do_form(specs, exit_clause, commands):
     steps = []
     for spec in specs:
         if not (
-            isinstance(spec, tuple)
-            and len(spec) in (2, 3)
-            and isinstance(spec[0], str)
+            isinstance(spec, tuple) and len(spec) in (2, 3) and isinstance(spec[0], str)
         ):
             raise SyntaxError("do variable specs must be (variable init [step])")
         bindings.append((spec[0], spec[1]))

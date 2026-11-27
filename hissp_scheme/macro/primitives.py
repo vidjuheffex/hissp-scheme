@@ -45,7 +45,11 @@ PRIMITIVES = {
     "QzLT_QzEQ_": ("chain", "<=", arithmetic.num_le),
     "QzGT_QzEQ_": ("chain", ">=", arithmetic.num_ge),
     "vectorQzH_ref": ("template", "{0}[{1}]", scheme_pairs.vector_ref),
-    "vectorQzH_setQzBANG_": ("template", "{0}.__setitem__({1},{2})", scheme_pairs.vector_set_bang),
+    "vectorQzH_setQzBANG_": (
+        "template",
+        "{0}.__setitem__({1},{2})",
+        scheme_pairs.vector_set_bang,
+    ),
 }
 
 assert frozenset(PRIMITIVES) == names.INTEGRATED_PRIMITIVES
@@ -58,7 +62,9 @@ def _atom(form):
 
     if type(form) is str and (form.isidentifier() or _CELL_REF.match(form)):
         return form
-    if type(form) is int or (type(form) is float and form == form and abs(form) != float("inf")):
+    if type(form) is int or (
+        type(form) is float and form == form and abs(form) != float("inf")
+    ):
         return repr(form)
     return None
 

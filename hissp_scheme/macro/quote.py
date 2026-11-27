@@ -16,6 +16,9 @@ from types import SimpleNamespace
 from hissp_scheme.runtime.symbols import from_form
 
 QUOTE = "hissp_scheme.macro.quote.._macro_.quote"
+# The reader turns `#(datum ...)` and `#u8(byte ...)` into these macro forms.
+VECTOR_LITERAL = "hissp_scheme.macro.quote.._macro_.vector_literal"
+BYTEVECTOR_LITERAL = "hissp_scheme.macro.quote.._macro_.bytevector_literal"
 
 _BOOLEANS = {"QzHASH_t": True, "QzHASH_f": False}
 
@@ -54,12 +57,18 @@ def datum_form(datum):
     if isinstance(datum, tuple):
         if not datum:
             return ()
+        if datum[0] == VECTOR_LITERAL:
+            return vector_literal(*datum[1:])
+        if datum[0] == BYTEVECTOR_LITERAL:
+            return bytevector_literal(*datum[1:])
         if len(datum) == 2 and datum[0] == QUOTE:
             datum = ("quote", datum[1])
         if len(datum) >= 3 and datum[-2] == ".":
             items, tail = datum[:-2], datum_form(datum[-1])
         elif "." in datum:
-            raise SyntaxError("dot may only appear before the final tail in quoted lists")
+            raise SyntaxError(
+                "dot may only appear before the final tail in quoted lists"
+            )
         else:
             items, tail = datum, ()
         return list_form(tuple(datum_form(item) for item in items), tail)
@@ -79,4 +88,18 @@ def quote(datum):
     return datum_form(datum)
 
 
-_macro_ = SimpleNamespace(quote=quote)
+def vector_literal(*items):
+    # Vector literals are self-evaluating: their elements are data.
+    return ("scheme_pairs..scheme_vector", *(datum_form(item) for item in items))
+
+
+def bytevector_literal(*items):
+    for item in items:
+        if not (type(item) is int and 0 <= item <= 255):
+            raise SyntaxError(f"#u8(...) elements must be bytes (0-255), got {item!r}")
+    return ("hissp_scheme.runtime.bytevectors..bytevector", *items)
+
+
+_macro_ = SimpleNamespace(
+    quote=quote, vector_literal=vector_literal, bytevector_literal=bytevector_literal
+)

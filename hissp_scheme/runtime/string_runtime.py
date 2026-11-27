@@ -93,7 +93,9 @@ def string_to_list(value, start=0, end=None):
 
 
 def list_to_string(chars):
-    return "".join(_check_char(char, "list->string") for char in _py_list(chars, "list->string"))
+    return "".join(
+        _check_char(char, "list->string") for char in _py_list(chars, "list->string")
+    )
 
 
 def string_to_vector(value, start=0, end=None):

@@ -15,7 +15,6 @@ import builtins
 import importlib
 from pathlib import Path
 
-import hissp
 
 from hissp_scheme import names
 from hissp_scheme.runtime.symbols import Symbol
@@ -77,6 +76,17 @@ def _scheme_library_module_name(spec):
         return "scheme_" + "_".join(_scheme_py_name(part) for part in spec[1:])
 
     return "_".join(_scheme_py_name(part) for part in spec)
+
+
+def library_module_name(spec):
+    """Python module name for a library name or a bare Python module name."""
+
+    module_name = _scheme_library_module_name(spec)
+    if module_name is not None:
+        return module_name
+    if isinstance(spec, str):
+        return _scheme_module_name(spec)
+    raise SyntaxError("library names must be lists or identifiers")
 
 
 def _scheme_export_tables(module):
@@ -302,7 +312,19 @@ def _scheme_current_source_dir():
     return Path(source).resolve().parent
 
 
-def _scheme_include_forms(paths):
+def _fold_case(form):
+    """Fold identifier case in reader data, as `#!fold-case` would."""
+
+    from hissp_scheme.macro.quote import is_string_literal_form
+
+    if type(form) is tuple:
+        return tuple(_fold_case(item) for item in form)
+    if type(form) is str and not is_string_literal_form(form) and ".." not in form:
+        return names.munge(names.demunge(form).casefold())
+    return form
+
+
+def scheme_include_forms(paths, fold_case=False):
     """Read source-level include files as unevaluated Scheme forms."""
 
     from hissp_scheme.reader import read_scheme_source_forms
@@ -313,8 +335,12 @@ def _scheme_include_forms(paths):
         include_path = Path(_scheme_literal_string(spec))
         if not include_path.is_absolute():
             include_path = base / include_path
-        forms.extend(read_scheme_source_forms(include_path))
+        included = read_scheme_source_forms(include_path)
+        forms.extend(_fold_case(included) if fold_case else included)
     return forms
+
+
+_scheme_include_forms = scheme_include_forms
 
 
 def library_form(env, name, clauses):
@@ -323,7 +349,8 @@ def library_form(env, name, clauses):
     exports = []
     forms = []
     seen_exports = set()
-    for clause in clauses:
+
+    def declare(clause):
         if not isinstance(clause, tuple) or not clause:
             raise SyntaxError("define-library clauses must be non-empty lists")
         operator, *body = clause
@@ -349,17 +376,26 @@ def library_form(env, name, clauses):
         elif operator == "begin":
             forms.extend(body)
         elif operator == "include":
-            forms.extend(_scheme_include_forms(body))
-        elif operator in {"include-ci", "include-library-declarations"}:
-            raise SyntaxError(
-                f"define-library clause {names.demunge(operator)} is not implemented yet"
-            )
-        elif operator == "cond-expand":
-            raise SyntaxError("define-library cond-expand is not implemented yet")
+            forms.extend(scheme_include_forms(body))
+        elif operator == "includeQzH_ci":
+            forms.extend(scheme_include_forms(body, fold_case=True))
+        elif operator == "includeQzH_libraryQzH_declarations":
+            for declaration in scheme_include_forms(body):
+                declare(declaration)
+        elif operator == "condQzH_expand":
+            from hissp_scheme.macro.derived import cond_expand_clause_body
+
+            for declaration in cond_expand_clause_body(
+                body, "define-library cond-expand"
+            ):
+                declare(declaration)
         else:
             raise SyntaxError(
                 f"unsupported define-library clause: {names.demunge(operator)}"
             )
+
+    for clause in clauses:
+        declare(clause)
 
     return (
         "hissp.macros.._macro_.progn",

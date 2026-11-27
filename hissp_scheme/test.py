@@ -17,6 +17,9 @@ BUILD_DIR = DEFAULT_BUILD_DIR
 
 TEST_FILES = (
     TEST_DIR / "test_scheme_base.scm",
+    TEST_DIR / "test_base_syntax.scm",
+    TEST_DIR / "test_ports.scm",
+    TEST_DIR / "test_bytevectors.scm",
     TEST_DIR / "test_scheme_write.scm",
     TEST_DIR / "test_scheme_read.scm",
     TEST_DIR / "test_scheme_file.scm",
@@ -47,23 +50,43 @@ COMPILE_ERROR_CASES = (
         "duplicate define-library export",
     ),
     (
-        "define-library include-ci unsupported",
-        "(define-library (scheme test-include-ci)\n"
+        "define-library unknown clause",
+        "(define-library (scheme test-unknown-clause)\n"
         "  (export value)\n"
         "  (import (scheme base))\n"
-        '  (include-ci "helpers.scm")\n'
+        "  (frobnicate)\n"
         "  (begin (define value 1)))\n",
         SyntaxError,
-        "include-ci",
+        "unsupported define-library clause: frobnicate",
     ),
     (
-        "define-library cond-expand unsupported",
-        "(define-library (scheme test-cond-expand)\n"
-        "  (export value)\n"
-        "  (import (scheme base))\n"
-        "  (cond-expand (else (begin (define value 1)))))\n",
+        "syntax-error from a syntax-rules template",
+        "(import (scheme base))\n"
+        "(define-syntax test-rejects-everything\n"
+        "  (syntax-rules ()\n"
+        '    ((_ x) (syntax-error "test-rejects-everything: rejected" x))))\n'
+        "(test-rejects-everything (a b))\n",
         SyntaxError,
-        "cond-expand",
+        "test-rejects-everything: rejected (a b)",
+    ),
+    (
+        "cond-expand invalid requirement",
+        '(import (scheme base))\n(cond-expand (("not-a-feature") 1))\n',
+        SyntaxError,
+        "invalid feature requirement",
+    ),
+    (
+        "bytevector literal out of range",
+        "(import (scheme base))\n(define test-bad-bytes #u8(1 256))\n",
+        SyntaxError,
+        "#u8(...) elements must be bytes",
+    ),
+    (
+        "define-record-type bad field spec",
+        "(import (scheme base))\n"
+        "(define-record-type <bad> (make-bad) bad? field-without-accessor)\n",
+        SyntaxError,
+        "field specs must be",
     ),
     (
         "import empty declaration",

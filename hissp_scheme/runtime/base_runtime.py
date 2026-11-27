@@ -13,28 +13,13 @@ from __future__ import annotations
 
 import cmath
 import math
-import sys
 from fractions import Fraction
 
 from scheme_pairs import Pair, py_to_list
 
 from hissp_scheme.runtime import control_runtime
-from hissp_scheme.runtime.arithmetic import (
-    add,
-    div,
-    mul,
-    num_eq,
-    num_ge,
-    num_gt,
-    num_le,
-    num_lt,
-    sub,
-)
-from hissp_scheme.runtime.numeric_syntax import (
-    _normalize,
-    exact,
-    string_to_number,
-)
+from hissp_scheme.runtime.arithmetic import mul
+from hissp_scheme.runtime.numeric_syntax import _normalize
 from hissp_scheme.runtime.symbols import Symbol
 
 _EXACT_TYPES = (int, Fraction)
@@ -299,6 +284,43 @@ def inexact(value):
     return float(value)
 
 
+def _simplest_between(low, high):
+    """Simplest rational in the closed interval [low, high], with 0 <= low."""
+
+    floor = math.floor(low)
+    if floor == low:
+        return Fraction(floor)
+    if floor < math.floor(high):
+        return Fraction(floor + 1)
+    rest = _simplest_between(1 / (high - floor), 1 / (low - floor))
+    return floor + 1 / rest
+
+
+def rationalize(x, y):
+    """The simplest rational number differing from `x` by no more than `y`."""
+
+    for value in (x, y):
+        if not real_q(value):
+            raise TypeError(f"rationalize expected real numbers, got {value!r}")
+    inexact_result = isinstance(x, float) or isinstance(y, float)
+    if inexact_result and (math.isnan(x) or math.isnan(y)):
+        return math.nan
+    if isinstance(y, float) and math.isinf(y):
+        return math.nan if isinstance(x, float) and math.isinf(x) else 0.0
+    if isinstance(x, float) and math.isinf(x):
+        return x
+    low, high = Fraction(x) - abs(Fraction(y)), Fraction(x) + abs(Fraction(y))
+    if low <= 0 <= high:
+        result = Fraction(0)
+    elif high < 0:
+        result = -_simplest_between(-high, -low)
+    else:
+        result = _simplest_between(low, high)
+    if inexact_result:
+        return float(result)
+    return result.numerator if result.denominator == 1 else result
+
+
 def square(value):
     return mul(value, value)
 
@@ -464,7 +486,7 @@ def list_copy(values):
 
 def _member(value, values, same):
     while values.__class__ is Pair:
-        if same(value, values.car):
+        if same(value, values.car) is not False:
             return values
         values = values.cdr
     return False
@@ -485,7 +507,7 @@ def member(value, values, same=None):
 def _assoc(key, alist, same):
     while alist.__class__ is Pair:
         entry = alist.car
-        if same(key, entry.car):
+        if same(key, entry.car) is not False:
             return entry
         alist = alist.cdr
     return False
@@ -548,8 +570,3 @@ def vector_for_each(procedure, vector, *more):
 
 def case_match_q(key, labels):
     return any(eqv_q(key, label) for label in labels)
-
-
-def newline(port=None):
-    (sys.stdout if port is None else port).write("\n")
-    return False
