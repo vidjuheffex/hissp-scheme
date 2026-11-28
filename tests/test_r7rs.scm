@@ -281,7 +281,12 @@
   (test-equal "2.5" (number->string 2.5))
   (test-equal "+inf.0" (number->string +inf.0))
   (test-equal 31 #x1F)
-  (test-equal 3/2 #e1.5))
+  (test-equal 3/2 #e1.5)
+  (test-equal 5001 (string-length (number->string (expt 10 5000))))
+  (test-equal (- (expt 10 5000) 1)
+              (string->number (make-string 5000 #\9)))
+  (test-equal 5001 (string-length (write-string (expt 10 5000))))
+  (test-equal 5003 (string-length (write-string (/ 1 (expt 10 5000))))))
 
 (test-group "r7rs integrated primitives"
   (test-equal '(1 2) (r7-shadowed-plus list 1 2))

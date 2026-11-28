@@ -317,7 +317,9 @@ Implemented or usable:
   procedures (`exact`, `inexact`, `quotient`, `floor/`, `exact-integer-sqrt`,
   `number->string`, `string->number`, and the rest); `(scheme inexact)` has
   `sqrt`, `exp`, `log`, the trigonometric functions, `nan?`, `infinite?`, and
-  `finite?`.
+  `finite?`. Exact integers have no digit limit: importing the runtime lifts
+  CPython's 4300-digit limit on converting integers to and from strings, for
+  the whole process.
 - A list procedure given a non-list says so (`length` of a Python list
   suggests `vector-length`), rather than reporting a dotted tail.
 - Lists: `map` and `for-each` (over several lists), `memq`/`memv`/`member`,
