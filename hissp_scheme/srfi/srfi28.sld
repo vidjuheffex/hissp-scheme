@@ -5,62 +5,50 @@
 
 (define-library (srfi 28)
   (export format)
-  (import (scheme base))
+  (import (scheme base)
+          (only hissp_scheme.runtime.printer display-string write-string))
   (begin
-    (define (format-display-string value)
-      (if (isinstance value str)
-        value
-        (str value)))
-
-    (define (format-write-string value)
-      (repr value))
-
-    (define (format-require-argument args arg-index directive)
+    (define (format-argument args arg-index directive)
       (if (< arg-index (length args))
         (list-ref args arg-index)
-        (throw
+        (raise
           (ValueError
-            (.format "not enough arguments for SRFI-28 directive ~{}"
-                     directive)))))
+            (string-append "not enough arguments for SRFI-28 directive ~"
+                           directive)))))
 
     (define (format-loop template args index arg-index output)
-      (if (>= index (len template))
-        (if (= arg-index (length args))
-          output
-          (throw (ValueError "too many arguments for format string")))
-        (let ((char (op#getitem template index)))
-          (if (not (= char "~"))
-            (format-loop template args (+ index 1) arg-index (+ output char))
-            (format-directive template args (+ index 1) arg-index output)))))
+      (cond
+        ((>= index (string-length template))
+         (if (= arg-index (length args))
+           output
+           (raise (ValueError "too many arguments for format string"))))
+        ((char=? (string-ref template index) #\~)
+         (format-directive template args (+ index 1) arg-index output))
+        (else
+         (format-loop template args (+ index 1) arg-index
+                      (string-append output (string (string-ref template index)))))))
 
-    (define (format-directive template args directive-index arg-index output)
-      (if (>= directive-index (len template))
-        (throw (ValueError "format string ends after ~"))
-        (let ((directive (op#getitem template directive-index)))
-          (if (= directive "a")
-            (format-loop template
-                         args
-                         (+ directive-index 1)
-                         (+ arg-index 1)
-                         (+ output
-                            (format-display-string
-                              (format-require-argument args arg-index directive))))
-            (if (= directive "s")
-              (format-loop template
-                           args
-                           (+ directive-index 1)
-                           (+ arg-index 1)
-                           (+ output
-                              (format-write-string
-                                (format-require-argument args arg-index directive))))
-              (if (= directive "%")
-                (format-loop template args (+ directive-index 1) arg-index (+ output "\n"))
-                (if (= directive "~")
-                  (format-loop template args (+ directive-index 1) arg-index (+ output "~"))
-                  (throw
-                    (ValueError
-                      (.format "unsupported SRFI-28 format directive: ~{}"
-                               directive))))))))))
+    (define (format-directive template args index arg-index output)
+      (if (>= index (string-length template))
+        (raise (ValueError "format string ends after ~"))
+        (let ((directive (string-ref template index)))
+          (define (continue text next-arg-index)
+            (format-loop template args (+ index 1) next-arg-index
+                         (string-append output text)))
+          (case directive
+            ((#\a)
+             (continue (display-string (format-argument args arg-index directive))
+                       (+ arg-index 1)))
+            ((#\s)
+             (continue (write-string (format-argument args arg-index directive))
+                       (+ arg-index 1)))
+            ((#\%) (continue "\n" arg-index))
+            ((#\~) (continue "~" arg-index))
+            (else
+             (raise
+               (ValueError
+                 (string-append "unsupported SRFI-28 format directive: ~"
+                                (string directive)))))))))
 
     (define (format template . args)
       (format-loop template args 0 0 ""))))

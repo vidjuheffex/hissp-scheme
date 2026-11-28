@@ -9,7 +9,7 @@
 (test-group "scheme read"
   (define temp-root (TemporaryDirectory))
   (define temp-dir temp-root.name)
-  (define text-path (str (op#truediv (Path temp-dir) "scheme-read.txt")))
+  (define text-path (str (.joinpath (Path temp-dir) "scheme-read.txt")))
 
   (call-with-output-file
     text-path

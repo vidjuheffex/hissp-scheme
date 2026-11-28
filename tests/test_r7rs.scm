@@ -97,7 +97,7 @@
 
 (define (r7-kw-mapping)
   (let ((options (dict)))
-    (op#setitem options "color" "red")
+    (operator..setitem options "color" "red")
     (call/kw dict (** options))))
 
 (define (r7-lambda-kw-shadow)
@@ -158,7 +158,7 @@
 (test-group "r7rs begin"
   (test-equal 3 (+ r7-top-x r7-top-y))
   (test-equal 30 (r7-body-begin))
-  (test-assert (not (op#contains (builtins..globals) 'r7-inner-a))))
+  (test-assert (not (operator..contains (builtins..globals) 'r7-inner-a))))
 
 (test-group "r7rs keyword identifiers"
   (test-equal '(1 2) (r7-keyword-formals 1 2))
@@ -425,3 +425,35 @@
   ;; its prelude (a hot reload) never sees two-argument `operator.add`.
   (test-equal #t (eq? + hissp_scheme.runtime.arithmetic..add))
   (test-equal #t (eq? / hissp_scheme.runtime.arithmetic..div)))
+
+;; Definitions and locals shadow macros of the same name, as in R7RS. Hissp's
+;; own macros (such as `mix`) aren't visible to Scheme code at all.
+(define (mix a b t) (+ a (* t (- b a))))
+
+(define-syntax r7-mac
+  (syntax-rules () ((_ x) (list 'macro x))))
+(define r7-mac-before (r7-mac 1))
+(define (r7-mac-param r7-mac) (r7-mac 2))
+(define (r7-mac-let) (let ((r7-mac (lambda (x) (list 'let x)))) (r7-mac 3)))
+(define (r7-mac-internal)
+  (define (r7-mac x) (list 'internal x))
+  (r7-mac 4))
+(define (r7-mac-named-let)
+  (let r7-mac ((n 2))
+    (if (= n 0) 'looped (r7-mac (- n 1)))))
+
+(define-syntax r7-mac2
+  (syntax-rules () ((_ x) (list 'macro x))))
+(define (r7-mac2 x) (list 'procedure x))
+
+(test-group "r7rs definitions shadow macros"
+  (test-equal 5.0 (mix 0 10 0.5))
+  (test-equal #f (builtins..hasattr _macro_ "mix"))
+  (test-equal '(macro 1) r7-mac-before)
+  (test-equal '(param 2) (r7-mac-param (lambda (x) (list 'param x))))
+  (test-equal '(let 3) (r7-mac-let))
+  (test-equal '(internal 4) (r7-mac-internal))
+  (test-equal 'looped (r7-mac-named-let))
+  (test-equal '(procedure 5) (r7-mac2 5))
+  (test-equal '((procedure 6)) (map r7-mac2 '(6)))
+  (test-equal 'still-macro (when #t 'still-macro)))

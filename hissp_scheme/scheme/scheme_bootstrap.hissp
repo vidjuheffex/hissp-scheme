@@ -161,12 +161,13 @@ hissp..prelude#:
   ;;
   ;;   scheme_bootstrap..prelude#:
   ;;
-  ;; It first delegates to Hissp's own prelude so the compiler has the standard
-  ;; macro machinery, then shadows/adds the Scheme names.
+  ;; Unlike Hissp's own prelude, it gives the module an empty macro namespace
+  ;; and no star imports, so Scheme code sees only Scheme names: the ones
+  ;; below and whatever it imports. Generated code reaches Hissp's macros by
+  ;; qualified name.
   (tuple
     (@ 'hissp.macros.._macro_.progn
-       ;; Keep the standard Hissp base available.
-       (tuple (@ 'hissp.macros.._macro_.prelude env))
+       (tuple (@ 'hissp.macros.._macro_.define '_macro_ (tuple (@ 'types..SimpleNamespace))))
        ;; Scheme arithmetic, the same procedures `(scheme base)` exports. The
        ;; symbols here are already Hissp-munged: `+` -> QzPLUS_, etc.
        (tuple (@ 'hissp.macros.._macro_.define 'QzPLUS_ 'hissp_scheme.runtime.arithmetic..add))

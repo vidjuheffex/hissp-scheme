@@ -16,9 +16,7 @@
           with-input-from-file
           with-output-to-file)
   (import (scheme base)
-          (scheme python)
           (only builtins open)
-          (only contextlib redirect-stdout)
           (only pathlib Path))
   (begin
     (define (open-input-file filename)
@@ -34,28 +32,22 @@
       (open filename "wb"))
 
     (define (call-with-input-file filename proc)
-      (enter (open-input-file filename) proc))
+      (call-with-port (open-input-file filename) proc))
 
     (define (call-with-output-file filename proc)
-      (enter (open-output-file filename) proc))
+      (call-with-port (open-output-file filename) proc))
 
     (define (with-input-from-file filename thunk)
-      (call-with-input-file
-        filename
+      (call-with-input-file filename
         (lambda (port)
-          (let ((previous sys..stdin))
-            (attribute-set! sys. 'stdin port)
-            (let ((result (thunk)))
-              (attribute-set! sys. 'stdin previous)
-              result)))))
+          (parameterize ((current-input-port port))
+            (thunk)))))
 
     (define (with-output-to-file filename thunk)
-      (call-with-output-file
-        filename
+      (call-with-output-file filename
         (lambda (port)
-          (enter
-            (redirect-stdout port)
-            (lambda (ignored-port) (thunk))))))
+          (parameterize ((current-output-port port))
+            (thunk)))))
 
     (define (file-exists? filename)
       (.exists (Path filename)))

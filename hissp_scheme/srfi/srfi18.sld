@@ -175,12 +175,9 @@
     (define (scheme-raise obj)
       (rt-raise- obj))
 
-    (define (raise-transformer obj)
-      (tuple
-        (@ 'srfi18..schemeQzH_raise obj)))
-
     (define-syntax raise
-      (syntax-case raise-transformer))
+      (syntax-rules ()
+        ((_ obj) (scheme-raise obj))))
 
     (define (join-timeout-exception? obj)
       (rt-join-timeout-exception-q obj))

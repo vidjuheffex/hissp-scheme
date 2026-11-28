@@ -119,7 +119,7 @@
   (test-equal "with-output-to-file sees current port"
               "to file"
               (let* ((temp-root (TemporaryDirectory))
-                     (path (str (op#truediv (Path temp-root.name) "out.txt"))))
+                     (path (str (.joinpath (Path temp-root.name) "out.txt"))))
                 (with-output-to-file path
                   (lambda () (write-string "to file")))
                 (let ((text (call-with-input-file path read-line)))
@@ -128,7 +128,7 @@
 
 (test-group "file ports"
   (define temp-root (TemporaryDirectory))
-  (define path (str (op#truediv (Path temp-root.name) "ports.txt")))
+  (define path (str (.joinpath (Path temp-root.name) "ports.txt")))
   (call-with-output-file path
     (lambda (port)
       (write-string "line one\nline two\n" port)

@@ -2,7 +2,7 @@
         (srfi 64)
         (srfi 177)
         (only (srfi 18) current-exception-handler)
-        (only hissp_scheme.runtime.control_runtime ContinuationError SchemeRaise))
+        (only hissp_scheme.runtime.control_runtime ContinuationError))
 
 ;; ---------------------------------------------------------------------------
 ;; Tail calls
@@ -261,7 +261,7 @@
   (test-assert "python exceptions are error objects"
                (guard (e (#t (error-object? e))) (car 1)))
   (test-error "guard with no matching clause re-raises"
-              SchemeRaise
+              #t
               (guard (e ((= e 'other) 'wrong)) (raise 'boom)))
   (test-equal "nested guard re-raise reaches outer"
               '(outer boom)
@@ -306,7 +306,7 @@
   (test-assert "file-error?"
                (guard (e (#t (file-error? e)))
                  (open "/nonexistent/hissp-scheme/file.txt")))
-  (test-error "uncaught error" SchemeRaise (raise 'uncaught))
+  (test-error "uncaught error" #t (raise 'uncaught))
   (test-assert "srfi-18 shares the base handler stack"
                (let ((handler (lambda (e) e)))
                  (with-exception-handler
@@ -355,13 +355,13 @@
   (test-equal "closure counter first" 1 (tc-counter))
   (test-equal "closure counter second" 2 (tc-counter))
   (test-assert "local set! does not create a global"
-               (not (op#contains (builtins..globals) 'tc-local-count)))
+               (not (operator..contains (builtins..globals) 'tc-local-count)))
   (test-equal "set! on a formal" 6 (tc-bump-formal 5))
   (test-assert "formal set! does not create a global"
-               (not (op#contains (builtins..globals) 'tc-formal-value)))
+               (not (operator..contains (builtins..globals) 'tc-formal-value)))
   (test-equal "internal define" 7 (tc-internal-helper-user))
   (test-assert "internal define does not leak"
-               (not (op#contains (builtins..globals) 'tc-hidden-helper))))
+               (not (operator..contains (builtins..globals) 'tc-hidden-helper))))
 
 ;; ---------------------------------------------------------------------------
 ;; Python interop

@@ -2,7 +2,7 @@
         (srfi 64))
 
 (test-group "strings"
-  (define seen (@))
+  (define seen (vector))
 
   (test-assert "string?" (string? "abc"))
   (test-equal "string? rejects non-string" #f (string? 123))
@@ -34,9 +34,9 @@
     (lambda (ch)
       (.append seen ch))
     "xyz")
-  (test-equal "string-for-each" (@ "x" "y" "z") seen)
+  (test-equal "string-for-each" (vector "x" "y" "z") seen)
 
-  (test-equal "string->vector" (@ "a" "b" "c") (string->vector "abc"))
+  (test-equal "string->vector" (vector "a" "b" "c") (string->vector "abc"))
 
   (test-error "string-set! immutable" TypeError (string-set! "abc" 1 "x"))
   (test-error "string-copy! immutable" TypeError (string-copy! "abc" 0 "z"))

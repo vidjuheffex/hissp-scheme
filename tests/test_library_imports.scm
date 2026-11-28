@@ -22,7 +22,7 @@
 
   (test-equal "nested import-set rename"
               "{\"x\": 1}"
-              (json-dumps (% "x" 1)))
+              (json-dumps (builtins..dict (vector (vector "x" 1)))))
 
   (test-equal "only import-set"
               4.0

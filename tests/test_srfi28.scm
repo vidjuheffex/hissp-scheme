@@ -4,7 +4,7 @@
 
 (test-group "srfi-28"
   (test-equal "format display/write"
-              "name=terrain repr='terrain'\n"
+              "name=terrain repr=\"terrain\"\n"
               (format "name=~a repr=~s~%" "terrain" "terrain"))
   (test-equal "format tilde"
               "~"

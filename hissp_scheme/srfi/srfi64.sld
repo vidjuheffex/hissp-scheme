@@ -30,8 +30,7 @@
           test-approximate
           test-error
           test-group)
-  (import (scheme base)
-          (only itertools chain))
+  (import (scheme base))
   (begin
     (define test-pass-count 0)
     (define test-fail-count 0)
@@ -135,58 +134,53 @@
     (define (_identity value)
       value)
 
+    ;; Errors, Scheme or Python, are recorded as failures instead of ending the
+    ;; suite.
     (define (test-assert-thunk name thunk source)
-      (engarde BaseException
-        (lambda (error)
-          (record-result name #f #t error))
-        (lambda ()
-          (let ((actual (thunk)))
-            (record-result name (not (eq? actual #f)) #t actual)))))
+      (guard (error (#t (record-result name #f #t error)))
+        (let ((actual (thunk)))
+          (record-result name (not (eq? actual #f)) #t actual))))
 
     (define (test-compare-thunks name expected-thunk actual-thunk comparator source)
-      (engarde BaseException
-        (lambda (error)
-          (record-result name #f "no error" error))
-        (lambda ()
-          (let ((expected (expected-thunk))
-                (actual (actual-thunk)))
-            (record-result name (comparator expected actual) expected actual)))))
+      (guard (error (#t (record-result name #f "no error" error)))
+        (let ((expected (expected-thunk))
+              (actual (actual-thunk)))
+          (record-result name (comparator expected actual) expected actual))))
 
     (define (test-approximate-thunks name expected-thunk actual-thunk error-thunk source)
-      (engarde BaseException
-        (lambda (error)
-          (record-result name #f "no error" error))
-        (lambda ()
-          (let ((expected (expected-thunk))
-                (actual (actual-thunk))
-                (tolerance (error-thunk)))
-            (record-result name
-                           (and (>= actual (- expected tolerance))
-                                (<= actual (+ expected tolerance)))
-                           expected
-                           actual)))))
+      (guard (error (#t (record-result name #f "no error" error)))
+        (let ((expected (expected-thunk))
+              (actual (actual-thunk))
+              (tolerance (error-thunk)))
+          (record-result name
+                         (and (>= actual (- expected tolerance))
+                              (<= actual (+ expected tolerance)))
+                         expected
+                         actual))))
 
     (define (error-matches? expected error)
-      (if (= expected #t)
+      (if (eq? expected #t)
         #t
         (isinstance error expected)))
 
     (define (test-error-thunk name expected-error thunk source)
-      (engarde BaseException
-        (lambda (error)
+      ;; `record-result` runs outside the `guard` body, so a failure it raises
+      ;; isn't mistaken for the expected error.
+      (let ((outcome
+             (guard (error (#t (list 'raised error)))
+               (list 'returned (thunk)))))
+        (if (eq? (car outcome) 'raised)
           (record-result name
-                         (error-matches? expected-error error)
+                         (error-matches? expected-error (cadr outcome))
                          expected-error
-                         (type error)))
-        (lambda ()
-          (let ((actual (thunk)))
-            (record-result name #f expected-error actual)))))
+                         (type (cadr outcome)))
+          (record-result name #f expected-error (cadr outcome)))))
 
     (define (test-exit-code . maybe-runner)
       (if (> test-fail-count 0) 1 0))
 
     (define (same-object? left right)
-      (op#is_ left right))
+      (eq? left right))
 
     (define (same-value? left right)
       (equal? left right))
@@ -283,13 +277,10 @@
                            (lambda () (_identity expression))
                            'expression))))
 
-    (define (test-group-transformer suite-name . body)
-      (tuple
-        (chain
-          (@ 'hissp.macros.._macro_.progn
-             (tuple (@ 'test-begin suite-name)))
-          body
-          (@ (tuple (@ 'test-end suite-name))))))
-
     (define-syntax test-group
-      (syntax-case test-group-transformer))))
+      (syntax-rules ()
+        ((_ suite-name body ...)
+         (begin
+           (test-begin suite-name)
+           body ...
+           (test-end suite-name)))))))

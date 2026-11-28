@@ -30,11 +30,11 @@
               (call/kw dumps payload (** json-options)))
 
   (define/kw (describe terrain (color size))
-    (@ terrain color size))
+    (vector terrain color size))
 
-  (test-equal "define/kw defaults" (@ "terrain" #f #f) (describe "terrain"))
+  (test-equal "define/kw defaults" (vector "terrain" #f #f) (describe "terrain"))
   (test-equal "define/kw call/kw"
-              (@ "terrain" "azure" 18)
+              (vector "terrain" "azure" 18)
               (call/kw describe "terrain" (size 18 color "azure")))
 
   (define scale-by

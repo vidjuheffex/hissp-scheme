@@ -8,8 +8,4 @@ scheme_bootstrap..prelude#:
 ;;
 ;;   (import (scheme base))
 
-(defmacro prelude (env)
-  (tuple (@ 'scheme_bootstrap.._macro_.prelude env)))
-
-(defun prelude (env)
-  (tuple (@ 'scheme.._macro_.prelude env)))
+(define prelude scheme_bootstrap..prelude)

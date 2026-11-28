@@ -8,9 +8,9 @@
 (test-group "scheme file"
   (define temp-root (TemporaryDirectory))
   (define temp-dir temp-root.name)
-  (define text-path (str (op#truediv (Path temp-dir) "scheme-file.txt")))
-  (define redirect-path (str (op#truediv (Path temp-dir) "redirect.txt")))
-  (define binary-path (str (op#truediv (Path temp-dir) "scheme-file.bin")))
+  (define text-path (str (.joinpath (Path temp-dir) "scheme-file.txt")))
+  (define redirect-path (str (.joinpath (Path temp-dir) "redirect.txt")))
+  (define binary-path (str (.joinpath (Path temp-dir) "scheme-file.bin")))
 
   (call-with-output-file
     text-path
@@ -32,10 +32,10 @@
               (call-with-input-file redirect-path (lambda (port) (.read port))))
 
   (let ((binary-output (open-binary-output-file binary-path)))
-    (.write binary-output (bytes (@ 97 98 99)))
+    (.write binary-output (bytes (vector 97 98 99)))
     (.close binary-output))
   (let ((binary-input (open-binary-input-file binary-path)))
-    (test-equal "binary file ports" (bytes (@ 97 98 99)) (.read binary-input))
+    (test-equal "binary file ports" (bytes (vector 97 98 99)) (.read binary-input))
     (.close binary-input))
 
   (delete-file text-path)

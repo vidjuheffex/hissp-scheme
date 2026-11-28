@@ -41,10 +41,8 @@
         (lambda ()
           (raise "boom")))))
   (define uncaught
-    (engarde BaseException
-      (lambda (error) error)
-      (lambda ()
-        (thread-join! uncaught-thread))))
+    (guard (error (#t error))
+      (thread-join! uncaught-thread)))
   (test-assert "uncaught-exception?"
                (uncaught-exception? uncaught))
   (test-equal "uncaught-exception-reason"
@@ -65,10 +63,8 @@
         (lambda ()
           (thread-sleep! 0.05)))))
   (define timeout-error
-    (engarde BaseException
-      (lambda (error) error)
-      (lambda ()
-        (thread-join! timeout-thread 0))))
+    (guard (error (#t error))
+      (thread-join! timeout-thread 0)))
   (test-assert "join-timeout-exception?"
                (join-timeout-exception? timeout-error))
   (thread-join! timeout-thread)
@@ -111,10 +107,8 @@
         "never-started")))
   (thread-terminate! new-thread)
   (define terminated-error
-    (engarde BaseException
-      (lambda (error) error)
-      (lambda ()
-        (thread-join! new-thread))))
+    (guard (error (#t error))
+      (thread-join! new-thread)))
   (test-assert "terminated-thread-exception?"
                (terminated-thread-exception? terminated-error))
 

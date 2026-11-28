@@ -8,6 +8,8 @@ bindings, and the small procedural `syntax-case` hook.
 import builtins
 import itertools
 
+from hissp.compiler import ENV
+
 from hissp_scheme import names
 from hissp_scheme.names import INTEGRATED_PRIMITIVES
 from hissp_scheme.macro.quote import QUOTE
@@ -472,10 +474,18 @@ def _collect_assigned_names(form, candidates, found):
         _collect_assigned_names(item, candidates, found)
 
 
+def _macro_names():
+    env = ENV.get()
+    namespace = env.get("_macro_") if env is not None else None
+    return set(vars(namespace)) if namespace is not None else set()
+
+
 def assigned_locals(names, body):
     """The names in `names` that `box_assigned_locals` would put in cells."""
 
-    found = set(names) & INTEGRATED_PRIMITIVES
+    # A local named like a macro shadows it, as in R7RS. Boxing it makes calls
+    # through it compile to `cell[0](...)` instead of expanding the macro.
+    found = set(names) & (INTEGRATED_PRIMITIVES | _macro_names())
     for form in body:
         _collect_assigned_names(form, set(names), found)
     return found
@@ -519,9 +529,9 @@ def box_assigned_locals(names, body):
     Only `set!` forms visible in the source are found; a macro that expands
     into `set!` of a caller's variable isn't detected.
 
-    Locals that shadow an integrated primitive such as `+` are boxed too, so
-    calls through them compile to `cell[0](...)` instead of reaching the
-    primitive's macro.
+    Locals that shadow a macro, such as the integrated primitive `+`, are
+    boxed too, so calls through them compile to `cell[0](...)` instead of
+    expanding the macro.
     """
 
     body = tuple(body)

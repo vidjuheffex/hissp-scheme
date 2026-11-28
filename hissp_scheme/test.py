@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,7 @@ import hissp.repl
 
 from hissp_scheme.build import DEFAULT_BUILD_DIR, build_core_libraries
 from hissp_scheme.reader import SchemeLissp
+from hissp_scheme.runtime.printer import write_string
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEST_DIR = PROJECT_ROOT / "tests"
@@ -151,6 +154,46 @@ def _record_compile_success_checks(reader: SchemeLissp) -> None:
             _record_result(name, False, expected, type(error))
 
 
+SHADOWING_LIBRARY = """
+(define-library (test shadowing)
+  (export when when-ready)
+  (import (scheme base))
+  (begin
+    (define (when x) (list 'my-when x))
+    (define (when-ready) (when 1))))
+"""
+
+
+def _record_shadowing_library_checks(reader: SchemeLissp) -> None:
+    # A library that defines a procedure named like a base macro uses and
+    # exports the procedure. It needs its own module, since every test file
+    # shares one.
+    module = types.ModuleType("test_shadowing")
+    module.__file__ = str(TEST_DIR / "test_shadowing.sld")
+    sys.modules[module.__name__] = module
+    try:
+        SchemeLissp(env=module.__dict__, evaluate=True, filename=module.__file__).compile(
+            SHADOWING_LIBRARY
+        )
+        _compile(
+            reader,
+            "(import (scheme base)\n"
+            "        (rename (test shadowing) (when shadowing-when)) "
+            "(only (test shadowing) when-ready))\n"
+            "(define test-shadowing-results\n"
+            "  (list (when-ready) (shadowing-when 2) (when #t 'base-when)))\n",
+            TEST_DIR / "<shadowing>.scm",
+        )
+        actual = reader.env["testQzH_shadowingQzH_results"]
+        expected = "((my-when 1) (my-when 2) base-when)"
+        actual = write_string(actual)
+        _record_result("library define shadows base macro", actual == expected, expected, actual)
+    except BaseException as error:
+        _record_result("library define shadows base macro", False, "no error", type(error))
+    finally:
+        del sys.modules[module.__name__]
+
+
 def _record_import_helper_error_checks() -> None:
     from hissp_scheme.runtime import scheme_bootstrap_runtime
 
@@ -191,6 +234,7 @@ def main() -> int:
 
     _record_compile_error_checks(reader)
     _record_compile_success_checks(reader)
+    _record_shadowing_library_checks(reader)
     _record_import_helper_error_checks()
 
     _compile(reader, '(test-end "scheme")\n', TEST_DIR / "<end>.scm")

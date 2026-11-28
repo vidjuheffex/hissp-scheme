@@ -50,20 +50,21 @@ _IF = {
 _IF_ELSE = {
     ("hissp.macros", "_macro_.ifQzH_else"),
 }
+_CORE = "hissp_scheme.macro.core"
 _SEQUENCE = {
-    ("scheme_base", "_macro_.begin"),
+    (_CORE, "_macro_.begin"),
     ("scheme_bootstrap", "_macro_.begin"),
     ("hissp.macros", "_macro_.progn"),
 }
 _LET = {
-    ("scheme_base", "_macro_.let"),
+    (_CORE, "_macro_.let"),
     ("scheme_bootstrap", "_macro_.let"),
     ("hissp.macros", "_macro_.let"),
 }
 # Scheme-level macros whose expansion is still Scheme code with the same tail
 # position. Anything not listed is treated as opaque.
 _EXPAND = {
-    ("scheme_base", f"_macro_.{name}")
+    (_CORE, f"_macro_.{name}")
     for name in (
         "letQzSTAR_",
         "letrec",
@@ -71,9 +72,7 @@ _EXPAND = {
         "do",
         "letQzH_syntax",
         "letrecQzH_syntax",
-        "guard",
-        "parameterize",
-        "raise",
+        "case",
     )
 }
 _TRANSFORMER_MODULE = "hissp_scheme.macro.syntax_rules"
@@ -115,9 +114,8 @@ def _global_value(head):
         return value
     if not head.isidentifier() or head in _LOCALS.get():
         return _MISSING
-    # Only trust a bare name bound by a Scheme `import`. Hissp's prelude and
-    # Python's builtins provide names like `count` and `filter` that a later
-    # Scheme definition may take over.
+    # Only trust a bare name bound by a Scheme `import`. Python's builtins
+    # provide names like `filter` that a later Scheme definition may take over.
     env = ENV.get(None) or {}
     value = env.get(head, _MISSING)
     if (
@@ -186,7 +184,7 @@ def _mark_macro_tail(form, macro):
     if key in _LET:
         if len(form) < 3:
             return form
-        if key[0] == "scheme_base" and isinstance(form[1], str):
+        if key[0] == _CORE and isinstance(form[1], str):
             return mark_tail(macroexpand1(form))
         return (*form[:-1], _wrap(form[-1]))
 

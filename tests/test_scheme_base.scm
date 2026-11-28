@@ -76,10 +76,10 @@
               (top-level-include-double 7))
 
   (test-equal "and empty" #t (and))
-  (test-equal "and short-circuit" #f (and #t #f (throw (AssertionError "unreachable"))))
+  (test-equal "and short-circuit" #f (and #t #f (raise (AssertionError "unreachable"))))
   (test-equal "and returns last true value" "last" (and #t "last"))
   (test-equal "or empty" #f (or))
-  (test-equal "or short-circuit" "first" (or "first" (throw (AssertionError "unreachable"))))
+  (test-equal "or short-circuit" "first" (or "first" (raise (AssertionError "unreachable"))))
   (test-equal "or returns last false value" #f (or #f))
 
   (when #t

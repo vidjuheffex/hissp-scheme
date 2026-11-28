@@ -2,139 +2,18 @@ scheme_bootstrap..prelude#:
 
 ;; Explicit `(scheme base)` library.
 ;;
-;; This file is still bootstrap source rather than a single `define-library`
-;; form because it defines macros and then uses those macros later in the same
-;; file. Hissp makes that reliable for sequential top-level forms. The final
-;; `install-library-exports` call registers the module as `(scheme base)` for
-;; ordinary R7RS-shaped imports.
+;; This file is a sequence of top-level forms rather than a single
+;; `define-library` form because it defines macros and then uses them later in
+;; the same file. The final `install-library-exports` call registers the module
+;; as `(scheme base)` for ordinary R7RS-shaped imports.
 
+;; The core syntax (`define`, `lambda`, `set!`, `begin`, the `let` family, `do`,
+;; `define-syntax`, `let-syntax`, `letrec-syntax`, and `case`) is implemented
+;; in `hissp_scheme/macro/core.py`.
 (import (only scheme_pairs install-core-list-bindings))
-(import (only itertools chain))
-(import (only hissp_scheme.macro.syntax_rules
-              expand-body-definitions
-              expand-sequence
-              expand-let-syntax
-              expand-letrec-syntax
-              make-transformer-from-form
-              syntax-rules-stable-identifiers))
+(import hissp_scheme.macro.core)
 
 (install-core-list-bindings (builtins..globals))
-
-(defmacro define (head .#"*body")
-  ;; Full Scheme `define`.
-  ;;
-  ;; Bootstrap provides basic value/function define. Base upgrades the
-  ;; function case: bodies may start with internal `define-syntax` forms, and
-  ;; the result is a tail-call-driving procedure (see `hissp_scheme.macro.tail`).
-  (if-else (isinstance head tuple)
-    (progn
-      (unless head
-        (throw (SyntaxError "function-style define requires a name")))
-      (tuple
-        (@ 'hissp.macros.._macro_.define
-           (op#getitem head 0)
-           (hissp_scheme.macro.tail..procedure_form
-             (op#getitem head 0)
-             (tuple (op#getitem head (slice 1 None)))
-             body))))
-    (progn
-      (unless (= (len body) 1)
-        (throw (SyntaxError "value-style define requires exactly one value")))
-      (tuple (@ 'hissp.macros.._macro_.define head (op#getitem body 0))))))
-
-(defmacro scheme-lambda (formals .#"*body")
-  ;; Full Scheme lambda with internal syntax-definition expansion and proper
-  ;; tail calls.
-  ;;
-  ;; The reader rewrites user source `(lambda ...)` to this non-keyword macro
-  ;; name in files using `scheme base`, preventing
-  ;; Python's own lambda syntax from bypassing the Scheme body expander.
-  (hissp_scheme.macro.tail..procedure_form None formals body))
-
-(defmacro set! (target value)
-  ;; Scheme assignment. Locals that are `set!` somewhere in their scope live in
-  ;; cells (see `box_assigned_locals`), and `set!` forms written directly in
-  ;; that scope are rewritten before this macro runs. A macro can still hand
-  ;; this form an already-rewritten cell reference as `target`, so handle that
-  ;; here too. Everything else is a module-level variable.
-  (hissp.macros.._macro_.let
-    (cell (hissp_scheme.macro.syntax_rules..cell_name_from_ref_form target))
-    (if-else cell
-      (tuple (@ 'hissp_scheme.macro.syntax_rules..cell_set cell value))
-      (tuple (@ 'hissp.macros.._macro_.setQzAT_ target value)))))
-
-(defmacro begin (.#"*body")
-  ;; Scheme sequencing with support for a syntax-definition prefix. Runtime
-  ;; definitions stay in the surrounding scope, so a top-level `begin` defines
-  ;; globals. (A `begin` directly in a body is spliced by the body expander.)
-  (hissp.macros.._macro_.let
-    (expanded (scheme_base..expandQzH_sequence
-                body
-                (scheme_base..syntaxQzH_rulesQzH_stableQzH_identifiers)))
-    (tuple
-      (chain
-        (@ 'hissp.macros.._macro_.progn)
-        expanded))))
-
-(defmacro let (bindings .#"*body")
-  ;; Scheme `let` and named `let`, with internal syntax-definition support.
-  (if-else (isinstance bindings str)
-    (progn
-      (unless body
-        (throw (SyntaxError "named let requires bindings")))
-      (hissp_scheme.macro.tail..named_let_form
-        bindings
-        (op#getitem body 0)
-        (op#getitem body (slice 1 None))))
-    (hissp_scheme.macro.tail..let_form bindings body)))
-
-(defmacro let* (bindings .#"*body")
-  ;; Sequential `let`: each init sees the bindings before it.
-  (hissp_scheme.macro.tail..let_star_form bindings body))
-
-(defmacro letrec (bindings .#"*body")
-  ;; Recursive bindings, implemented through internal `define`.
-  (hissp_scheme.macro.tail..letrec_form bindings body "letrec"))
-
-(defmacro letrec* (bindings .#"*body")
-  ;; Like `letrec`, with inits evaluated left to right.
-  (hissp_scheme.macro.tail..letrec_form bindings body "letrec*"))
-
-(defmacro do (specs exit-clause .#"*commands")
-  ;; R7RS `do` loop, expanded into a named `let`.
-  (hissp_scheme.macro.tail..do_form specs exit-clause commands))
-
-(defmacro define-syntax (name transformer)
-  ;; Define a Scheme-style macro transformer.
-  (unless (ands (isinstance transformer tuple)
-                transformer
-                (ors (= (op#getitem transformer 0) 'syntaxQzH_rules)
-                     (= (op#getitem transformer 0) 'syntaxQzH_case)))
-    (throw (SyntaxError "define-syntax supports syntax-rules and syntax-case transformers")))
-  (tuple
-    (@ 'builtins..setattr
-       '_macro_
-       (tuple (@ 'quote name))
-       (tuple
-         (@ 'scheme_base..makeQzH_transformerQzH_fromQzH_form
-            (tuple (@ 'quote name))
-            (tuple (@ 'quote transformer))
-            (tuple (@ 'scheme_base..syntaxQzH_rulesQzH_stableQzH_identifiers))
-            (tuple (@ 'builtins..globals)))))))
-
-(defmacro let-syntax (bindings .#"*body")
-  ;; Lexically scoped local syntax-rules transformers.
-  (scheme_base..expandQzH_letQzH_syntax
-    bindings
-    body
-    (scheme_base..syntaxQzH_rulesQzH_stableQzH_identifiers)))
-
-(defmacro letrec-syntax (bindings .#"*body")
-  ;; Mutually visible local syntax-rules transformers.
-  (scheme_base..expandQzH_letrecQzH_syntax
-    bindings
-    body
-    (scheme_base..syntaxQzH_rulesQzH_stableQzH_identifiers)))
 
 (define-syntax and
   ;; R7RS `and`: short-circuit left to right and return the last true value.
@@ -200,59 +79,6 @@ scheme_bootstrap..prelude#:
        (begin result ...)
        (cond clause ...)))))
 
-(define (case-body-form body)
-  (tuple
-    (chain
-      (@ 'begin)
-      body)))
-
-(define (case-datum-value-form datum)
-  ;; Case labels are datums, so quote them as Scheme data.
-  (tuple (@ 'hissp_scheme.macro.quote.._macro_.quote datum)))
-
-(define (case-datum-list-form datums)
-  (tuple
-    (chain
-      (@ 'QzAT_)
-      (builtins..map case-datum-value-form datums))))
-
-(define (case-dispatch-form key clauses)
-  (if (null? clauses)
-    #f
-    (let ((clause (car clauses))
-          (remaining (cdr clauses)))
-      (unless (and (isinstance clause tuple)
-                   (> (len clause) 0))
-        (throw (SyntaxError "case clauses must be non-empty lists")))
-      (let ((labels (op#getitem clause 0))
-            (body (op#getitem clause (slice 1 None))))
-        (if (= labels 'else)
-          (case-body-form body)
-          (begin
-            (unless (isinstance labels tuple)
-              (throw (SyntaxError "case datum labels must be a list")))
-            (tuple
-              (@ 'if
-                 (tuple
-                   (@ 'hissp_scheme.runtime.base_runtime..case_match_q
-                      key
-                      (case-datum-list-form labels)))
-                 (case-body-form body)
-                 (case-dispatch-form key remaining)))))))))
-
-(define (case-transformer key . clauses)
-  (let ((key-name (.format "_Qzcase_key_{}" (id clauses))))
-    (tuple
-      (@ 'let
-         (tuple (@ (tuple (@ key-name key))))
-         (case-dispatch-form key-name clauses)))))
-
-(define-syntax case
-  ;; R7RS-shaped `case`. This uses a procedural transformer because case labels
-  ;; are datums, not expressions, and our syntax-rules layer intentionally keeps
-  ;; quote handling conservative.
-  (syntax-case case-transformer))
-
 ;; ---------------------------------------------------------------------------
 ;; Control: continuations, multiple values, exceptions, parameters
 ;; ---------------------------------------------------------------------------
@@ -299,19 +125,11 @@ scheme_bootstrap..prelude#:
 (define <= hissp_scheme.runtime.arithmetic..num_le)
 (define >= hissp_scheme.runtime.arithmetic..num_ge)
 
-;; Two-argument calls of the procedures above, and `vector-ref`/`vector-set!`
-;; calls, compile to Python expressions; see `hissp_scheme/macro/primitives.py`.
-;; Each name is exported as both the procedure and the macro.
-(builtins..setattr _macro_ 'QzPLUS_ hissp_scheme.macro.primitives.._macro_.QzPLUS_)
-(builtins..setattr _macro_ 'QzH_ hissp_scheme.macro.primitives.._macro_.QzH_)
-(builtins..setattr _macro_ 'QzSTAR_ hissp_scheme.macro.primitives.._macro_.QzSTAR_)
-(builtins..setattr _macro_ 'QzEQ_ hissp_scheme.macro.primitives.._macro_.QzEQ_)
-(builtins..setattr _macro_ 'QzLT_ hissp_scheme.macro.primitives.._macro_.QzLT_)
-(builtins..setattr _macro_ 'QzGT_ hissp_scheme.macro.primitives.._macro_.QzGT_)
-(builtins..setattr _macro_ 'QzLT_QzEQ_ hissp_scheme.macro.primitives.._macro_.QzLT_QzEQ_)
-(builtins..setattr _macro_ 'QzGT_QzEQ_ hissp_scheme.macro.primitives.._macro_.QzGT_QzEQ_)
-(builtins..setattr _macro_ 'vectorQzH_ref hissp_scheme.macro.primitives.._macro_.vectorQzH_ref)
-(builtins..setattr _macro_ 'vectorQzH_setQzBANG_ hissp_scheme.macro.primitives.._macro_.vectorQzH_setQzBANG_)
+;; Calls of the procedures above, and of `vector-ref`/`vector-set!`, compile to
+;; Python expressions; see `hissp_scheme/macro/primitives.py`. Each name is
+;; exported as both the procedure and the macro. The import comes after the
+;; definitions, since a `define` replaces a macro of the same name.
+(import hissp_scheme.macro.primitives)
 (define number? hissp_scheme.runtime.base_runtime..number_q)
 (define complex? hissp_scheme.runtime.base_runtime..complex_q)
 (define real? hissp_scheme.runtime.base_runtime..real_q)

@@ -54,6 +54,10 @@ PRIMITIVES = {
 
 assert frozenset(PRIMITIVES) == names.INTEGRATED_PRIMITIVES
 
+# Imported values: none. Imported macros: all of the above.
+__scheme_exports__ = {}
+__scheme_macros__ = {names.demunge(name): name for name in PRIMITIVES}
+
 _CELL_REF = re.compile(r"_Qzcell_\d+_\w+\[0\]\Z")
 
 

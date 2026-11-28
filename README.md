@@ -65,7 +65,12 @@ consumer app/tests
 
 `hissp_scheme/scheme/scheme_bootstrap.hissp` is the minimal Hissp bridge. It
 defines only the bootstrap syntax needed to import libraries and compile
-Scheme-shaped source.
+Scheme-shaped source. Its prelude gives each Scheme module an empty macro
+namespace and no star imports, so Scheme code sees only Scheme names: the
+bootstrap syntax and whatever the module imports. Hissp's bundled macros and
+reader tags (`@`, `%`, `op#`, `throw`, `mix`, ...) aren't available, and
+generated code reaches Hissp's macros by qualified name. Python names are
+used through imports or `module..name`, as in `(operator..contains d key)`.
 
 `hissp_scheme/runtime/scheme_bootstrap_runtime.py` contains the ordinary Python
 helpers used by the bootstrap macros: import-set planning, library export
@@ -80,6 +85,11 @@ procedural transformer hook for macros that must compute target forms.
 positions. `hissp_scheme/runtime/control_runtime.py` holds the matching
 runtime: the tail-call trampoline, escape continuations, `dynamic-wind`, the
 exception-handler stack, multiple values, and parameter objects.
+
+`hissp_scheme/macro/core.py` implements the core syntax of `(scheme base)`:
+`define`, `lambda`, `set!`, `begin`, the `let` family, `do`, `define-syntax`,
+`let-syntax`, `letrec-syntax`, and `case`. `scheme_base.sld` imports them
+with `(import hissp_scheme.macro.core)`.
 
 `hissp_scheme/macro/derived.py` holds the procedural transformers for
 `define-record-type`, `define-values`, `let-values`, `let*-values`,
@@ -180,14 +190,14 @@ primitives must use CPython runtime facilities. Forced termination of another
 already-running thread raises an explicit `NotImplementedError`; CPython cannot
 safely kill arbitrary running threads.
 
-`(srfi 28)` provides `format`.
+`(srfi 28)` provides `format`. `~a` displays and `~s` writes, in Scheme
+notation.
 
 `(srfi 64)` provides the test runner API and test macros such as `test-group`,
 `test-equal`, and `test-error`. Its macros are written with `syntax-rules`.
 
 `(srfi 69)` provides basic hash tables backed by Python dictionaries. Use it
-for Scheme-level mutable maps instead of Hissp `%` literals or direct Python
-`.get`/`.update` calls.
+for Scheme-level mutable maps instead of direct Python `.get`/`.update` calls.
 
 `(srfi 132)` provides the full sort library: `list-sort`, `vector-sort`,
 `vector-sort!`, merging, neighbor-duplicate deletion, median finding, and
@@ -199,7 +209,9 @@ which take the vector first.
 
 `(srfi 177)` provides keyword-call syntax: `call/kw`, `lambda/kw`, and
 `define/kw`. Its macros are owned by the SRFI module and installed with
-`define-syntax` using the `syntax-case` transformer hook.
+`define-syntax` using the `syntax-case` transformer hook. The transformers are
+in `hissp_scheme/macro/keywords.py`, since they build Python keyword-argument
+calls, which Scheme has no spelling for.
 
 The SRFI modules are written as Scheme libraries using a single
 `(define-library ...)` form. Base dependencies are declared in the library's
@@ -348,6 +360,10 @@ Partial or intentionally explicit errors:
   half that.
 - Tail calls that pass Python keyword arguments (for example through SRFI-177
   `call/kw`) run as ordinary Python calls.
+- Definitions shadow macros, as in R7RS. A top-level `define` of a name bound
+  to a macro removes the macro from that module (and the module exports the
+  procedure), and a parameter or local variable named like a macro is an
+  ordinary variable in its scope.
 - Local `set!` is detected from `set!` forms written in the variable's scope.
   A macro that expands into `set!` of a caller's local variable isn't detected,
   and assigns a module-level variable instead.
@@ -368,7 +384,7 @@ Partial or intentionally explicit errors:
   - A tail call to a Python callable bound by a Scheme `import` (such as
     `cons` or `car`), or written as `module..name`, is a direct call. A
     Python callable can't continue a chain of Scheme tail calls, so this
-    keeps tail calls proper. Bare Python builtins and Hissp prelude names
+    keeps tail calls proper. Bare Python builtins
     still go through the trampoline, since a later Scheme definition may
     replace them.
 - SRFI-18 `raise` keeps SRFI-18's behavior of returning the handler's value,

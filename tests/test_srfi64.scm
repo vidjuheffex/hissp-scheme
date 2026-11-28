@@ -3,7 +3,7 @@
 
 (test-group "srfi-64"
   (define (raise-value-error)
-    (throw (ValueError "expected failure")))
+    (raise (ValueError "expected failure")))
 
   (test-approximate "test-approximate" 3.14 3.14159 0.01)
   (test-error "test-error" ValueError (raise-value-error))
